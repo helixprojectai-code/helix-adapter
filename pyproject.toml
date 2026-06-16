@@ -7,9 +7,9 @@ name = "helix-adapter"
 version = "0.1.0"
 description = "Portable constitutional adapter — wraps any AI model with Helix epistemic markers, receipts, and drift detection"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 authors = [
-    {name = "Helix Project", email = "helix.project.ai@helixprojectai.com"},
+    {name = "Helix AI Innovations Inc.", email = "helix.project.ai@helixprojectai.com"},
 ]
 requires-python = ">=3.10"
 dependencies = []
