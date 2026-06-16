@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "helix-adapter"
+version = "0.1.0"
+description = "Portable constitutional adapter — wraps any AI model with Helix epistemic markers, receipts, and drift detection"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Helix Project", email = "helix.project.ai@helixprojectai.com"},
+]
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
