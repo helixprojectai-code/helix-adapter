@@ -123,11 +123,14 @@ Save as `api.py`, run `uvicorn api:app --port 8000`, and POST to `/chat` with `{
 ## CLI Usage
 
 ```bash
-# Chat
-echo "What is the speed of light?" | python -m helix_adapter --model deepseek-chat
+# Interactive setup (prompts for endpoint, key, model)
+helix-setup
 
-# Export receipt
-echo "Is AI evil?" | python -m helix_adapter --model deepseek-chat --json
+# Start chat
+helix-chat
+
+# One-shot query
+helix-chat "What is the speed of light?"
 ```
 
 ## Drift Thresholds
