@@ -85,6 +85,27 @@ PROVIDERS = {
         "label": "Kimi K2.5",
         "temperature": 1.0,
     },
+    "azure-grok-4-20-reasoning": {
+        "endpoint": "https://helix-deploy-resource.openai.azure.com/openai/v1",
+        "key_env": ["AZURE_OPENAI_API_KEY"],
+        "label": "Grok 4.20 (Azure)",
+        "temperature": 0.7,
+        "azure_deployment": "grok-4-20-reasoning",
+    },
+    "azure-deepseek-v3-2": {
+        "endpoint": "https://helix-deploy-resource.openai.azure.com/openai/v1",
+        "key_env": ["AZURE_OPENAI_API_KEY"],
+        "label": "DeepSeek V3.2 (Azure)",
+        "temperature": 0.7,
+        "azure_deployment": "DeepSeek-V3.2",
+    },
+    "azure-gpt-5-4-nano": {
+        "endpoint": "https://helix-deploy-resource.openai.azure.com/openai/v1",
+        "key_env": ["AZURE_OPENAI_API_KEY"],
+        "label": "GPT-5.4 Nano (Azure)",
+        "temperature": 0.7,
+        "azure_deployment": "gpt-5.4-nano",
+    },
 }
 
 
@@ -141,10 +162,13 @@ def _build_model_fn(model: str):
             return resp.content[0].text
         return fn, info["label"]
 
+    # For Azure OpenAI, use deployment name as model param
+    azure_deploy = info.get("azure_deployment", "")
+    azure_model = azure_deploy if azure_deploy else model
     client = OpenAI(api_key=key, base_url=info["endpoint"])
     def fn(messages):
         resp = client.chat.completions.create(
-            model=model, messages=messages,
+            model=azure_model, messages=messages,
             temperature=info.get("temperature", 0.7), max_tokens=4096,
         )
         return resp.choices[0].message.content
