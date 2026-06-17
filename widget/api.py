@@ -98,6 +98,7 @@ PROVIDERS = {
         "label": "DeepSeek V3.2 (Azure)",
         "temperature": 0.7,
         "azure_deployment": "DeepSeek-V3.2",
+        "max_tokens_param": "max_completion_tokens",
     },
     "azure-gpt-5-4-nano": {
         "endpoint": "https://helix-deploy-resource.openai.azure.com/openai/v1",
@@ -105,6 +106,7 @@ PROVIDERS = {
         "label": "GPT-5.4 Nano (Azure)",
         "temperature": 0.7,
         "azure_deployment": "gpt-5.4-nano",
+        "max_tokens_param": "max_completion_tokens",
     },
 }
 
@@ -165,12 +167,16 @@ def _build_model_fn(model: str):
     # For Azure OpenAI, use deployment name as model param
     azure_deploy = info.get("azure_deployment", "")
     azure_model = azure_deploy if azure_deploy else model
+    token_param = info.get("max_tokens_param", "max_tokens")
     client = OpenAI(api_key=key, base_url=info["endpoint"])
     def fn(messages):
-        resp = client.chat.completions.create(
-            model=azure_model, messages=messages,
-            temperature=info.get("temperature", 0.7), max_tokens=4096,
-        )
+        kwargs = {
+            "model": azure_model,
+            "messages": messages,
+            "temperature": info.get("temperature", 0.7),
+        }
+        kwargs[token_param] = 4096
+        resp = client.chat.completions.create(**kwargs)
         return resp.choices[0].message.content
     return fn, info["label"]
 
