@@ -108,6 +108,22 @@ PROVIDERS = {
         "azure_deployment": "gpt-5.4-nano",
         "max_tokens_param": "max_completion_tokens",
     },
+
+    "gemini-2.5-flash": {
+        "endpoint": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "key_env": ["GOOGLE_API_KEY"],
+        "label": "Gemini 2.5 Flash",
+        "temperature": 0.7,
+        "provider_type": "google",
+    },
+    "gemini-2.5-pro": {
+        "endpoint": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "key_env": ["GOOGLE_API_KEY"],
+        "label": "Gemini 2.5 Pro",
+        "temperature": 0.7,
+        "provider_type": "google",
+    }
+
 }
 
 
@@ -162,6 +178,19 @@ def _build_model_fn(model: str):
                 kwargs["system"] = system
             resp = c.messages.create(**kwargs)
             return resp.content[0].text
+        return fn, info["label"]
+
+    if provider_type == "google":
+        client = OpenAI(
+            api_key=key,
+            base_url=info["endpoint"],
+        )
+        def fn(messages):
+            resp = client.chat.completions.create(
+                model=model, messages=messages,
+                temperature=info.get("temperature", 0.7), max_tokens=4096,
+            )
+            return resp.choices[0].message.content
         return fn, info["label"]
 
     # For Azure OpenAI, use deployment name as model param
