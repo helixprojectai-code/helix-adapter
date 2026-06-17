@@ -264,11 +264,16 @@ async def compare(req: CompareRequest):
         raise HTTPException(400, "; ".join(errors))
 
     async def call_one(model_name, label, adapter, system_prompt):
+        sp_label = "(Helix)" if system_prompt == "helix" else "(no prompt)"
+        display_label = f"{label} {sp_label}"
         if system_prompt == "helix":
             result = adapter.chat(req.message)
+            # Overwrite receipt model with display label
+            result.receipt["model"] = display_label
+            result.receipt["display_label"] = display_label
+            _save_receipt(result.receipt)
         else:
-            # Raw mode: call model directly without constitutional prompt
-            from helix_adapter.prompt import system_messages
+            # Raw mode: call model directly
             raw_msgs = [{"role": "user", "content": req.message}]
             loop = asyncio.get_event_loop()
             raw_text = await loop.run_in_executor(None, adapter.model_fn, raw_msgs)
@@ -277,7 +282,7 @@ async def compare(req: CompareRequest):
             from helix_adapter.receipt import make_receipt
             claims = extract_claims(raw_text)
             drift = compute_drift(raw_text, claims)
-            receipt = make_receipt(req.message, raw_text, claims, model=label, drift_score=drift)
+            receipt = make_receipt(req.message, raw_text, claims, model=display_label, drift_score=drift)
             _save_receipt(receipt)
             class RawResult:
                 def __init__(self):
@@ -286,10 +291,10 @@ async def compare(req: CompareRequest):
                     self.drift = drift
                     self.receipt = receipt
             result = RawResult()
-        _save_receipt(result.receipt)
+
         return {
             "model": model_name,
-            "label": label,
+            "label": display_label,
             "response": result.response,
             "claims": result.claims,
             "drift": result.drift,
