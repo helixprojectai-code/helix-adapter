@@ -133,6 +133,32 @@ helix-chat
 helix-chat "What is the speed of light?"
 ```
 
+## Widget (Reference FastAPI Server)
+
+A full constitutional chat widget with A/B comparison, drift gauge, and receipt export.
+
+```bash
+# Install dependencies
+pip install helix-adapter[widget]
+
+# Start server
+cd widget
+uvicorn api:app --port 8001
+
+# Or install as systemd service
+# See widget/tel-chat-api.service
+```
+
+Open `http://localhost:8001` for the chat interface.
+
+The widget demonstrates:
+- Single-model constitutional chat
+- A/B comparison across models (Deepseek, Claude, Kimi)
+- Epistemic marker extraction with colored pills
+- Drift gauge with γ thresholds
+- Turn-by-turn receipt export
+- Server-side rendering (no JS required for crawlers)
+
 ## Drift Thresholds
 
 | Range | Status | Meaning |

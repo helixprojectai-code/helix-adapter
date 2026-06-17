@@ -20,6 +20,7 @@ helix-chat = "helix_adapter.chat:main"
 
 [project.optional-dependencies]
 dev = ["pytest"]
+widget = ["fastapi", "uvicorn", "openai", "anthropic"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
