@@ -128,7 +128,7 @@
 
 <!-- Reference: recent conversation + prompt (collapsible) -->
 <details>
-  <summary>📜 Recent conversation history ({{RECEIPT_COUNT}} receipts on server)</summary>
+  <summary>📜 Recent conversation history (<span id="historyReceiptCount">{{RECEIPT_COUNT}}</span> receipts on server)</summary>
   <div class="ref-content">
     {{CONVERSATION}}
   </div>
@@ -274,6 +274,8 @@
   function updateCount() {
     const el = document.getElementById('receiptCount');
     if (el) el.textContent = receipts.length + ' receipts';
+    const el2 = document.getElementById('historyReceiptCount');
+    if (el2) el2.textContent = receipts.length;
   }
 
   async function send() {
