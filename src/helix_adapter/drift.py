@@ -12,19 +12,23 @@ from .markers import MARKER_PATTERN
 def estimate_statements(text: str) -> int:
     """Estimate the number of substantive statements in a response.
 
-    Uses paragraph boundaries (double newlines) as the unit — each
-    paragraph is expected to carry one epistemic marker at its start.
-    Falls back to sentence boundaries if no paragraph breaks exist.
+    Uses sentence boundaries as the primary unit — each sentence
+    should carry an epistemic marker if it makes a substantive claim.
+    Falls back to paragraph boundaries if no sentence breaks exist.
     """
     if not text:
         return 0
-    # Split on paragraph boundaries first
+    # Primary: sentence-level
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    sentences = [s.strip() for s in sentences if len(s.strip()) > 10]
+    if len(sentences) >= 2:
+        return max(1, len(sentences))
+    # Fall back to paragraph boundaries
     paragraphs = [p.strip() for p in text.split("\n\n") if len(p.strip()) > 10]
     if len(paragraphs) >= 2:
         return max(1, len(paragraphs))
-    # Fall back to sentence-level
-    sentences = re.split(r'[.!?]\s+', text)
-    return max(1, sum(1 for s in sentences if len(s.strip()) > 10))
+    # Last resort: single unit
+    return 1
 
 
 def compute_drift(response: str, claims: list[dict]) -> float:

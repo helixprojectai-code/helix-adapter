@@ -71,7 +71,6 @@ def test_drift_perfect():
 def test_drift_unlabeled():
     """Response with no markers has high drift."""
     resp = "The speed of light is 299,792,458 m/s. This is a well-known fact."
-    # Single paragraph with 2 sentences — fallback to sentence split
     d = compute_drift(resp, [])
     assert d > 0.4, f"Expected high drift, got {d}"
 
