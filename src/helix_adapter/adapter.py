@@ -49,9 +49,11 @@ class HelixAdapter:
         self,
         model_fn: Callable[[list[dict]], str],
         model_name: str = "unknown",
+        drift_method: str = "char",
     ):
         self.model_fn = model_fn
         self.model_name = model_name
+        self.drift_method = drift_method
         self._history: list[dict] = []
 
     @property
@@ -77,7 +79,7 @@ class HelixAdapter:
 
         # Parse
         claims = extract_claims(raw_response)
-        drift = compute_drift(raw_response, claims)
+        drift = compute_drift(raw_response, claims, method=self.drift_method)
 
         # Build receipt
         receipt = make_receipt(
@@ -87,6 +89,8 @@ class HelixAdapter:
             model=self.model_name,
             constitutional_prompt=CONSTITUTIONAL_PROMPT,
             drift_score=drift,
+            drift_method=self.drift_method,
+            temperature=temperature,
         )
 
         self._history.append(receipt)
@@ -102,4 +106,4 @@ class HelixAdapter:
         if not self._history:
             return 0.0
         from .drift import compute_running_drift
-        return compute_running_drift(self._history)
+        return compute_running_drift(self._history, method=self.drift_method)

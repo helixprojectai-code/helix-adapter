@@ -10,13 +10,15 @@ GET  /receipts                   ->  all stored receipts as JSON
 
 import os, sys, time, json
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import uvicorn
 
 from helix_adapter import HelixAdapter, CONSTITUTIONAL_PROMPT
+from helix_adapter.markers import validate_response, extract_claims
+from helix_adapter.drift import compute_drift
 from openai import OpenAI
 
 HERE = Path(__file__).parent
@@ -55,6 +57,9 @@ adapter = HelixAdapter(
     ).choices[0].message.content,
     model_name="deepseek-chat",
 )
+
+# Bypass key for sp:none on compare endpoint — unset = disabled
+COMPARE_BYPASS_KEY = os.environ.get("HELIX_COMPARE_BYPASS_KEY", "")
 import asyncio
 
 # ── Provider registry ──────────────────────────────────────────────
@@ -268,9 +273,28 @@ class CompareRequest(BaseModel):
 
 
 @app.post("/api/compare")
-async def compare(req: CompareRequest):
+async def compare(req: CompareRequest, request: Request = None):
     if not req.message.strip():
         raise HTTPException(400, "message empty")
+
+    # Check if any model requests constitutional bypass (sp:none)
+    wants_bypass = False
+    for mc in req.models:
+        if isinstance(mc, str):
+            continue
+        sp = getattr(mc, 'system_prompt', 'helix')
+        if sp is None or (isinstance(sp, str) and sp.lower() in ("none", "null", "raw", "")):
+            wants_bypass = True
+            break
+
+    if wants_bypass:
+        if not COMPARE_BYPASS_KEY:
+            raise HTTPException(403, "Constitutional bypass (sp:none) is disabled on this instance.")
+        bypass_key = ""
+        if request:
+            bypass_key = request.headers.get("X-Compare-Bypass-Key", "")
+        if bypass_key != COMPARE_BYPASS_KEY:
+            raise HTTPException(403, "Constitutional bypass requires X-Compare-Bypass-Key header.")
 
     adapters = []
     errors = []
@@ -341,9 +365,36 @@ async def chat(req: ChatRequest):
         raise HTTPException(400, "message empty")
     try:
         result = adapter.chat(req.message)
-        _save_receipt(result.receipt)
     except Exception as e:
         raise HTTPException(502, f"Model call failed: {e}")
+
+    # Constitutional compliance validation (lenient mode: inject footer on violation)
+    validation = validate_response(result.response)
+    if not validation["compliant"]:
+        print(f"[CONSTITUTIONAL VIOLATION] {validation['issues']}", flush=True)
+        footer = (
+            f"\n\n[UNCERTAIN] Constitutional audit note: the preceding response "
+            f"was flagged for potential marker-format violations: "
+            f"{'; '.join(validation['issues'])}. "
+            f"The response may not meet full constitutional standards."
+        )
+        result.response += footer
+        # Re-extract claims and drift with the footer included
+        result.claims = extract_claims(result.response)
+        result.drift = compute_drift(result.response, result.claims)
+        # Rebuild receipt
+        from helix_adapter.receipt import make_receipt
+        result.receipt = make_receipt(
+            user_message=req.message,
+            assistant_response=result.response,
+            claims=result.claims,
+            model=adapter.model_name,
+            constitutional_prompt=CONSTITUTIONAL_PROMPT,
+            drift_score=result.drift,
+            drift_method=adapter.drift_method,
+        )
+
+    _save_receipt(result.receipt)
     return {
         "response": result.response,
         "claims": result.claims,

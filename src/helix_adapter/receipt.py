@@ -17,6 +17,8 @@ def make_receipt(
     model: str = "unknown",
     constitutional_prompt: str | None = None,
     drift_score: float = 0.0,
+    drift_method: str = "char",
+    temperature: float | None = None,
 ) -> dict:
     """Create a tamper-evident receipt for a constitutional exchange.
 
@@ -27,6 +29,8 @@ def make_receipt(
         model: Model identifier (e.g. "deepseek-chat").
         constitutional_prompt: The prompt text used. Optional, useful for audit.
         drift_score: Computed drift for this exchange.
+        drift_method: Drift calculation method used.
+        temperature: Model temperature used for this exchange.
 
     Returns:
         A dict with all receipt fields and a SHA-256 hash.
@@ -43,6 +47,8 @@ def make_receipt(
         "assistant_response": assistant_response,
         "claims": claims,
         "drift_score": round(drift_score, 4),
+        "drift_method": drift_method,
+        "temperature": temperature,
         "hash": "",
     }
     # Self-hash: the receipt seals itself

@@ -8,6 +8,10 @@
 import re
 
 MARKER_PATTERN = re.compile(
+    r"[\[\(\{<]?(FACT|REASONED|HYPOTHESIS|UNCERTAIN|CONCLUSION)[\]\)\}>]?:?",
+)
+
+STANDARD_MARKER_PATTERN = re.compile(
     r"\[(FACT|REASONED|HYPOTHESIS|UNCERTAIN|CONCLUSION)\]",
 )
 
@@ -36,7 +40,10 @@ def extract_claims(text: str) -> list[dict]:
         # Also grab text before the first marker (for content [MARKER] style)
         if i == 0:
             before = text[:start].strip()
-            if before and not any(m in before for m in ("[FACT]", "[REASONED]", "[HYPOTHESIS]", "[UNCERTAIN]", "[CONCLUSION]")):
+            # Skip pure numbering prefixes: "1.", "2.", "1.1", "1)", etc.
+            if re.match(r'^\d+[\.\)]\s*$', before):
+                pass
+            elif before and not any(m in before for m in ("[FACT]", "[REASONED]", "[HYPOTHESIS]", "[UNCERTAIN]", "[CONCLUSION]")):
                 claims.append({"label": label, "text": before[:200]})
 
         seg = segment.strip().rstrip(".").strip()
@@ -61,3 +68,59 @@ def count_claims(text: str) -> dict[str, int]:
         label = m.group(1)
         counts[label] = counts.get(label, 0) + 1
     return counts
+
+
+def detect_nonstandard_markers(text: str) -> list[str]:
+    """Return nonstandard marker instances (not using [MARKER] square-bracket format).
+
+    Standard:     [FACT], [REASONED], [HYPOTHESIS], [UNCERTAIN], [CONCLUSION]
+    Nonstandard:  {FACT}, (FACT), <FACT>, FACT:, FACT (bare)
+    """
+    nonstandard = []
+    for m in MARKER_PATTERN.finditer(text):
+        full = m.group(0)
+        if not STANDARD_MARKER_PATTERN.match(full):
+            nonstandard.append(full)
+    return nonstandard
+
+
+def validate_response(text: str, min_markers: int = 1) -> dict:
+    """Validate constitutional compliance of a model response.
+
+    Returns dict with:
+        compliant: bool — True if response passes all checks
+        issues: list[str] — descriptions of violations found
+        marker_count: int — number of standard markers found
+        nonstandard_count: int — number of nonstandard marker instances
+    """
+    issues = []
+
+    # Trivial responses are exempt from marker requirements
+    if len(text.strip()) < 30:
+        return {"compliant": True, "issues": [], "marker_count": 0, "nonstandard_count": 0}
+
+    standard_matches = STANDARD_MARKER_PATTERN.findall(text)
+    standard_count = len(standard_matches)
+
+    nonstandard = detect_nonstandard_markers(text)
+    nonstandard_count = len(nonstandard)
+
+    if standard_count < min_markers:
+        if nonstandard_count > 0:
+            examples = nonstandard[:3]
+            issues.append(
+                f"Nonstandard marker format used: {examples}. "
+                f"Square-bracket format [MARKER] is constitutionally required."
+            )
+        else:
+            issues.append(
+                f"No epistemic markers found in {len(text)}-char response. "
+                f"Minimum {min_markers} standard marker(s) required."
+            )
+
+    return {
+        "compliant": len(issues) == 0,
+        "issues": issues,
+        "marker_count": standard_count,
+        "nonstandard_count": nonstandard_count,
+    }
