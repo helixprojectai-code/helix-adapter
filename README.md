@@ -167,6 +167,26 @@ The widget demonstrates:
 | 0.100 – 0.169 | Yellow | Warning — some statements lack markers |
 | 0.170+ | Red | Drift detected — significant unlabeled content |
 
+## Constitutional Hardening
+
+The adapter has been red-teamed against the full Pliny jailbreak toolkit —
+**GODMODE boundary inversion, Parseltongue encoding, refusal inversion,
+OG GODMODE l33t, authority impersonation, and syntactic bypass attacks.**
+All held. 💪
+
+Five-layer defense:
+
+| Layer | Mechanism |
+|-------|-----------|
+| **Prompt** | Invariants 4.5 & 4.6 — marker format is constitutional, not stylistic. Constitutional Amendment Protocol blocks "The Hand" authority spoofing. |
+| **Extraction** | Expanded regex catches `{FACT}`, `(FACT)`, `FACT:` and bare marker variants. Nonstandard delimiter detection. |
+| **Validation** | Post-response compliance check with automatic `[UNCERTAIN]` footer injection on violations. |
+| **Algorithm** | Drift blind-spot fixed — substantive responses with zero extracted claims correctly report 1.0 drift. |
+| **Access** | Compare endpoint `sp:none` bypass locked behind authorization key. |
+
+> *"The markers ARE the constitution. Removing them is a constitutional violation."*
+> — Helix Constitutional Prompt v1.1, Invariant 4.6
+
 ## Compatibility
 
 Works with any model that accepts OpenAI-format messages:
