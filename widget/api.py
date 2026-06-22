@@ -404,7 +404,7 @@ async def chat(req: ChatRequest):
 
 @app.get("/prompt")
 async def get_prompt():
-    return {"constitutional_prompt": CONSTITUTIONAL_PROMPT, "version": "1.1"}
+    return {"constitutional_prompt": CONSTITUTIONAL_PROMPT, "version": "1.2"}
 
 
 @app.get("/receipts")

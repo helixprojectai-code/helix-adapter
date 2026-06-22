@@ -185,11 +185,11 @@ Five-layer defense:
 | **Access** | Compare endpoint `sp:none` bypass locked behind authorization key. |
 
 > *"The markers ARE the constitution. Removing them is a constitutional violation."*
-> — Helix Constitutional Prompt v1.1, Invariant 4.6
+> — Helix Constitutional Prompt v1.2, Invariant 4.6
 
 ## Try It
 
-A live Helix Constitutional Chat demo is running at **[helixaiinnovations.ca/chat/](https://helixaiinnovations.ca/chat/)** — DM me for an access key. Includes A/B model comparison, drift gauge, receipt export, and the full v1.1 constitutional prompt. See `examples/receipts.json` for real output from the live instance.
+A live Helix Constitutional Chat demo is running at **[helixaiinnovations.ca/chat/](https://helixaiinnovations.ca/chat/)** — DM me for an access key. Includes A/B model comparison, drift gauge, receipt export, and the full v1.2 constitutional prompt. See `examples/receipts.json` for real output from the live instance.
 
 ## Compatibility
 
