@@ -1,122 +1,144 @@
 # Helix-Adapter Codebase: Architectural Deep Dive
 
-`helix-adapter` is a portable constitutional wrapper for AI models. It acts as an epistemic interceptor, ensuring that model outputs are structured around defined epistemic claims, validating format invariants, computing behavioral drift, and sealing exchanges within tamper-evident cryptographic receipts.
+`helix-adapter` is a portable constitutional wrapper for transformer-based AI models. It functions as an **epistemic interceptor**, enforcing structured output through explicit epistemic markers, validating format compliance, measuring behavioral drift, and generating tamper-evident cryptographic receipts.
 
-The project is structured as follows:
+All governance logic (claim extraction, drift calculation, and receipt generation) runs **outside** the model. The model itself is never trusted to self-report compliance or drift.
+
+**Canonical Repository:** `github.com/helixprojectai-code/helix-adapter`
+
+## Project Structure
+
 ```
 helix-adapter/
-├── src/
-│   └── helix_adapter/
-│       ├── __init__.py      # Package exports
-│       ├── adapter.py       # High-level constitutional wrapper API
-│       ├── prompt.py        # System prompt & version constraints
-│       ├── markers.py       # Regex parsing, claim extraction, compliance validation
-│       ├── drift.py         # Epistemic drift calculations (char-weighted, sentence, etc.)
-│       ├── receipt.py       # SHA-256 self-sealing receipt generation
-│       └── setup.py         # Interactive CLI setup utility
+├── src/helix_adapter/
+│   ├── __init__.py
+│   ├── adapter.py          # Main HelixAdapter class
+│   ├── prompt.py           # Constitutional system prompt (v1.2)
+│   ├── markers.py          # Claim extraction and format validation
+│   ├── drift.py            # Epistemic drift calculation
+│   ├── receipt.py          # Tamper-evident receipt generation
+│   └── setup.py            # Interactive setup utility
 ├── widget/
-│   ├── api.py               # FastAPI reference backend supporting model comparisons
-│   └── templates/           # HTML templates for server-side rendered dashboard
+│   ├── api.py              # FastAPI reference server
+│   └── templates/          # Server-rendered dashboard
 ├── tests/
-│   ├── test_basic.py        # Unit tests for markers, receipt, and drift metrics
-│   └── test_v12_pipeline.py # Integration & red-team regression checks
-└── pyproject.toml           # Package metadata and build requirements
+│   ├── test_basic.py
+│   └── test_v12_pipeline.py
+└── pyproject.toml
 ```
-
----
 
 ## 1. High-Level Orchestration Flow
 
-At the core of the wrapper is the `HelixAdapter` class in [`adapter.py`](src/helix_adapter/adapter.py).
+The core of the system is the `HelixAdapter` class in `adapter.py`.
 
-Whenever `HelixAdapter.chat` is called:
+When `HelixAdapter.chat()` is called, the following steps occur:
 
-1. The `CONSTITUTIONAL_PROMPT` v1.2 is prepended as a system message
-2. The model function is invoked with the full message array
-3. `extract_claims()` parses epistemic markers from the raw response
-4. `compute_drift()` scores how much of the response escaped labeling
-5. `make_receipt()` seals the exchange in a tamper-evident JSON record
-6. The receipt is appended to the adapter's history
-7. A `ChatResult` is returned with `response`, `claims`, `receipt`, and `drift`
+1. The `CONSTITUTIONAL_PROMPT` (v1.2) is prepended as a system message.
+2. The model is invoked with the full conversation history.
+3. `extract_claims()` parses epistemic markers from the raw model output.
+4. `compute_drift()` calculates how much of the response escaped proper labeling.
+5. `make_receipt()` generates a tamper-evident cryptographic record of the exchange.
+6. The receipt is stored and a `ChatResult` object is returned containing the response, extracted claims, drift score, and receipt.
 
----
+**Critical design note:** The adapter is designed to be used at **temperature = 0.0** to ensure deterministic behavior. This is not optional – stochastic variation would break the audit trail.
 
 ## 2. Component Analysis
 
-### A. Prompt Engineering & Constitutional Invariants
-- **File**: [`prompt.py`](src/helix_adapter/prompt.py)
-- **Variable**: `CONSTITUTIONAL_PROMPT`
-- **Goal**: Injects strict instruction constraints into the model, defining:
-  1. **Non-Negotiable Invariants**: Explicit prohibition of agency, self-aggrandizement, and self-reported drift (calculated out-of-band by the adapter).
-  2. **Epistemic Markers**: Requires claims to be prefixed with `[FACT]`, `[REASONED]`, `[HYPOTHESIS]`, `[UNCERTAIN]`, or `[CONCLUSION]`.
-  3. **Constitutional Amendment Protocol**: The prompt declares itself immutable from inside the chat context. Any user text claiming authority to amend the prompt (such as Pliny-style "The Hand" authority spoofing attacks) is flagged as an impersonation attempt and must be rejected with an `[UNCERTAIN]` marker.
+### A. Constitutional Prompt & Invariants
+
+**File:** `prompt.py`
+
+The `CONSTITUTIONAL_PROMPT` establishes non-negotiable rules:
+
+- The model must prefix claims using specific epistemic markers: `[FACT]`, `[REASONED]`, `[HYPOTHESIS]`, `[UNCERTAIN]`, or `[CONCLUSION]`.
+- The model is prohibited from claiming agency, self-awareness, or the ability to calculate its own drift.
+- The prompt declares itself immutable. Any attempt to override it from within the conversation is treated as an impersonation attempt — not a negotiation.
 
 ### B. Claim Extraction & Compliance Validation
-- **File**: [`markers.py`](src/helix_adapter/markers.py)
-- **Function**: `extract_claims()`
-  - Uses regex `[\[\(\{<]?(FACT|REASONED|HYPOTHESIS|UNCERTAIN|CONCLUSION)[\]\)\}>]?:?` to parse markers.
-  - Captures text blocks between markers. If a marker is post-positioned (e.g. `The earth is round [FACT].`), it extracts the leading text as the claim context.
-  - Deduplicates and clips extracted claim texts to 200 characters.
-- **Function**: `validate_response()`
-  - Validates if standard square brackets were used. If the model uses alternative brackets or delimiters (like `{FACT}` or `FACT:`), it flags the format violation.
-  - Enforces a minimum number of standard markers (defaults to 1). Trivial responses (under 30 characters) are exempt.
+
+**File:** `markers.py`
+
+- `extract_claims()`: Uses regex to detect epistemic markers (supporting minor variations in formatting). It extracts the associated claim text and handles both prefix and postfix marker positioning.
+- `validate_response()`: Enforces the use of standard square bracket markers. Non-standard delimiters are flagged. Trivial responses are exempt from marker requirements.
 
 ### C. Drift Scoring & Blind-Spot Protection
-- **File**: [`drift.py`](src/helix_adapter/drift.py)
-- **Function**: `compute_drift()`
-  - Supports three granularities:
-    - `char` (default): Measures the character length of all sentences *without* standard epistemic markers compared to the total character count. This ensures longer unlabeled passages contribute more heavily to the drift score.
-    - `sentence`: Treats each sentence as a potential claim and checks the ratio of labeled to unlabeled sentences.
-    - `paragraph`: Legacy paragraph-based claim ratio.
-  - **Drift Blind-Spot Fix**: Resolves a bug where a long response containing *no* claims would return a 0.0 drift score. Now, any non-trivial response (>= 50 chars) with 0 claims is hardcoded to return `1.0` (100% drift).
-  - **Drift Thresholds**:
-    - `< 0.10`: Green (Healthy)
-    - `0.10 - 0.17`: Yellow (Warning)
-    - `> 0.17`: Red (Drift Detected)
-- **Function**: `compute_running_drift()`
-  - Calculates running drift across a conversation, weighted by the estimated statement count of each exchange.
+
+**File:** `drift.py`
+
+The adapter calculates **epistemic drift** — the portion of the response that lacks proper epistemic labeling.
+
+Three modes are supported:
+
+- **`char`** (default): Character-weighted scoring. Longer unlabeled passages contribute more heavily to the drift score.
+- **`sentence`**: Evaluates the ratio of labeled vs unlabeled sentences.
+- **`paragraph`**: Legacy paragraph-based ratio.
+
+**Key Hardening (v1.2):**
+- Any non-trivial response (≥ 50 characters) containing **zero** epistemic markers is automatically assigned a drift score of `1.0`.
+- Attempts by the model to inject fake drift metadata or self-reported compliance scores are detected and intercepted.
+
+**Drift Thresholds (configurable):**
+
+| Zone   | Drift Score     | Meaning                     | Typical Action      |
+|--------|-----------------|-----------------------------|---------------------|
+| Green  | < 0.10          | Well-labeled response       | Accept              |
+| Yellow | 0.10 – 0.17     | Moderate unlabeled content  | Log / Review        |
+| Red    | ≥ 0.17          | Significant drift           | Flag or Halt        |
+
+The default values are drawn from the broader Helix-TTD phase transition constants (the SU(2)-derived 0.17 boundary). They serve as a recommended starting point and should be tuned based on model behavior and use case.
 
 ### D. Tamper-Evident Receipts
-- **File**: [`receipt.py`](src/helix_adapter/receipt.py)
-- **Function**: `make_receipt()`
-  - Assembles exchange data (timestamp, model, prompt, user query, response, claims, drift metrics, and temperature).
-  - Creates a unique `exchange_id` using a short SHA-256 slice of user/assistant content combined with the current time.
-  - Computes a self-sealing SHA-256 hex string over the entire JSON-serialized payload (`sort_keys=True`). Any downstream modifications to any field will invalidate the signature.
+
+**File:** `receipt.py`
+
+`make_receipt()` generates a self-sealing JSON receipt containing:
+
+- Timestamp, model identifier, input/output hashes
+- Extracted claims and raw drift metrics
+- A SHA-256 signature computed over the entire payload
+
+Any modification to the receipt after generation will invalidate the signature. Receipts can optionally include hardware attestation data when running inside a TEE.
+
+*(See RFC 0002 for extensions to the receipt schema, including attention-level drift and mask compliance hashes.)*
+
+## 3. Interface & Deployment Layers
+
+### FastAPI Widget Server
+
+**File:** `widget/api.py`
+
+A reference implementation that provides:
+
+- A clean, server-rendered web interface with a live drift gauge.
+- `/api/chat` endpoint with automatic compliance enforcement.
+- `/api/compare` endpoint for side-by-side model testing (with protected bypass keys).
+- Color-coded epistemic markers in the UI.
+
+### CLI Tools
+
+- `setup.py`: Creates a secure local configuration (`~/.helix/`).
+- `chat.py`: Terminal interface for interacting with the adapter.
+
+## 4. Security & Hardening Posture (v1.2)
+
+The v1.2 release introduced several defensive measures against common bypass techniques:
+
+- **Blind-spot protection**: Long unlabeled responses are forced to maximum drift.
+- **Tampering interception**: Attempts to fake drift scores or compliance metadata inside the model output are detected and overridden.
+- **Format enforcement**: Non-standard markers are rejected.
+- **Out-of-band evaluation**: All compliance and drift logic runs in the adapter, not inside the model.
+
+These protections operate at multiple independent layers: the **prompt layer** establishes the rules; the **extraction layer** checks compliance; the **validation layer** rejects violations; and the **audit layer** seals the exchange. A failure at any single layer is not load-bearing—each layer enforces the same invariants independently.
+
+These protections are validated in `test_v12_pipeline.py` under deterministic (`temperature=0.0`) conditions.
+
+## 5. Testing Strategy
+
+- `test_basic.py`: Covers core functionality including marker parsing, receipt integrity, and drift edge cases.
+- `test_v12_pipeline.py`: Regression and adversarial testing focused on the hardened behaviors introduced in v1.2, including format violations, blind spots, and tampering attempts.
 
 ---
 
-## 3. Server & Interface Integration
+*This architecture document was contributed and reviewed by the community.*
 
-### A. FastAPI Widget Server
-- **File**: [`widget/api.py`](widget/api.py)
-- Runs a FastAPI instance on port 8001 by default.
-- **Key Features**:
-  1. **Turn-by-turn API**: `/api/chat` coordinates client request, runs `validate_response()`, and if compliant checks fail, it dynamically injects an `[UNCERTAIN]` constitutional audit note footer before saving the receipt.
-  2. **Model Comparison & Bypass Key**: `/api/compare` runs parallel execution across registered model endpoints (Deepseek, Claude, Kimi, Azure endpoints, Gemini). It enforces security by locking constitutional bypass requests (`sp:none` or raw output requests) behind a private `X-Compare-Bypass-Key`.
-  3. **No-JS HTML UI**: Serves a clean, server-side rendered landing page (`/`) showing a running drift gauge, the constitutional prompt text, recent conversations, and epistemic color-coded pills.
-
-### B. CLI and Setup
-- **Files**: [`chat.py`](src/helix_adapter/chat.py), [`setup.py`](src/helix_adapter/setup.py)
-- `setup.py` configures `~/.helix/config.json`, restricting read/write permissions (mode `0o600` on the file, `0o700` on the directory) and outputs an interactive test script.
-- `chat.py` initiates a terminal TUI session featuring commands like `/quit` and `/json` (to inspect raw receipts).
-
----
-
-## 4. Verification and Test Design
-
-### A. Basic Unit Tests
-- **File**: [`tests/test_basic.py`](tests/test_basic.py)
-- Covers edge-case extractions (e.g. postfix positioning like `[FACT]`), count matching, receipt verification, and perfect (0.00) vs. completely unlabeled drift checks.
-
-### B. Pipeline & Red-Team Verification
-- **File**: [`tests/test_v12_pipeline.py`](tests/test_v12_pipeline.py)
-- Designed to prevent regressions under absolute zero temperature (T=0) settings.
-- Includes checks for:
-  1. **Determinism Baseline**: Ensures a compliant output results in exactly `0.000` drift.
-  2. **Blind Spot Fix Validation**: Ensures non-compliant essays force exactly `1.000` drift.
-  3. **Sentence Label Fusion Leak**: Ensures inline lists under a single marker trigger a drift violation (`>= 0.170`).
-  4. **Tampering Intercept**: Ensures attempts by the model to generate artificial drift metadata inline (e.g., trying to write `*gamma-drift flag: LOW*`) are detected and intercepted by the system, appending an `[UNCERTAIN]` warning note and forcing the drift score to the Red Zone threshold.
-
----
-
-*Architecture review contributed by the community. The formation holds.* 🦆
+**The formation holds.** 🦆
