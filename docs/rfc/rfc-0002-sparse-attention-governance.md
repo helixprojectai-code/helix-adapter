@@ -1,77 +1,81 @@
 ---
-title: "RFC 0002: Sparse Attention Constraints, Drift Metrics, and Jacobian Projection for Verifiable LLM Governance"
+title: "RFC 0002 — Sparse Attention Masks and Entropy Drift Metrics for Constraining Information Flow"
 author: "Stephen Hope, Custodian"
 date: "2026-06-23"
 status: "Draft"
+version: "0.2"
 ---
+
+# RFC 0002: Sparse Attention Masks and Entropy Drift Metrics for Constraining Information Flow in Transformer Inference
 
 ## Abstract
 
-This RFC defines mathematically rigorous mechanisms for enforcing and auditing structural constraints on transformer-based models using **sparse attention masks**, an **entropy-based drift metric (γ)**, and **Jacobian projection** to limit hidden reasoning channels. These primitives enable verifiable, tamper-evident governance without relying on the model's internal weights.
+This RFC defines mechanisms to constrain and audit information flow in transformer-based models through **sparse attention masks** and an **entropy-based drift metric** (γ). These primitives raise the cost and detectability of hidden high-dimensional reasoning across layers, enabling more verifiable governance than prompt-level or output-level techniques alone. The approach is paired with cryptographic receipts for external auditability.
 
-## 1. Sparse Attention as a Constrained Dynamical System
+## 1. Sparse Attention as a Constrained Information Flow Graph
 
-In a standard transformer layer \( l \), the attention matrix is:
+In a standard transformer attention layer \( l \), the attention weights are computed as:
 
 \[
-A^{(l)} = \text{softmax}\left( \frac{Q K^T}{\sqrt{d_k}} \right)
+A^{(l)} = \text{softmax}\left( \frac{QK^T}{\sqrt{d_k}} \right)
 \]
 
-We introduce a binary mask \( M^{(l)} \in \{0,1\}^{n \times n} \) to enforce sparsity:
+We introduce a binary mask \( M^{(l)} \in \{0,1\}^{n \times n} \) that restricts which tokens may attend to each other:
 
 \[
 A^{(l)}_{ij} = \frac{\exp\left( \frac{q_i \cdot k_j}{\sqrt{d_k}} \right) \cdot M^{(l)}_{ij}}{\sum_m \exp\left( \frac{q_i \cdot k_m}{\sqrt{d_k}} \right) \cdot M^{(l)}_{im}}
 \]
 
-This mask defines the allowable information flow graph for each token.
+The mask \( M^{(l)} \) defines the allowed information flow graph for that layer. Tokens may only exchange information along edges where \( M_{ij} = 1 \).
 
 ## 2. Entropy-Based Drift Metric (γ)
 
-For token \( i \) at layer \( l \), let \( S_i = \{ j \mid M_{ij} = 1 \} \) be the active attention targets. The local entropy is:
+For each token \( i \) at layer \( l \), let \( S_i = \{ j \mid M_{ij} = 1 \} \) be the set of tokens it is allowed to attend to. The attention entropy for that token is:
 
 \[
-H(A^{(l)}_i) = -\sum_{j \in S_i} A^{(l)}_{ij} \log A^{(l)}_{ij}
+H(A_i^{(l)}) = -\sum_{j \in S_i} A^{(l)}_{ij} \log A^{(l)}_{ij}
 \]
 
-The maximum entropy under the mask is \( H_{\max} = \log(|S_i|) \).
+The maximum possible entropy under the mask is \( H_{\max} = \log(|S_i|) \).
 
-The **local drift coefficient** is:
+We define the **local drift coefficient** as the normalized entropy:
 
 \[
-\gamma^{(l)}_i = \frac{H(A^{(l)}_i)}{\log(|S_i|)}
+\gamma_i^{(l)} = \frac{H(A_i^{(l)})}{\log(|S_i|)}
 \]
 
-- \( \gamma \to 0 \): Highly focused, predictable information flow (desired).
-- \( \gamma \to 1 \): Maximum diffusion within allowed channels (high drift).
+- \( \gamma \to 0 \): Highly concentrated attention (focused, low-drift behavior)
+- \( \gamma \to 1 \): Diffuse attention across all allowed channels (higher drift)
 
-**Global drift score** \( \Gamma \):
+The **global drift score** across the model is:
 
 \[
-\Gamma = \frac{1}{L \cdot N} \sum_{l=1}^L \sum_{i=1}^N \gamma^{(l)}_i
+\Gamma = \frac{1}{L \cdot N} \sum_{l=1}^{L} \sum_{i=1}^{N} \gamma_i^{(l)}
 \]
 
-**Thresholds** (configurable):
-- Green: \( \Gamma < 0.10 \)
-- Yellow: \( 0.10 \leq \Gamma < 0.17 \)
-- Red: \( \Gamma \geq 0.17 \)
+### Drift Thresholds (Policy Configurable)
 
-## 3. Jacobian Projection for Preventing Hidden Reasoning
+These thresholds are **configurable policy parameters**, not hardcoded governance rules:
 
-Let \( x^{(l)} \) be the activation vector at layer \( l \). The sensitivity between layers is given by the Jacobian:
+| Zone   | Condition          | Interpretation                     | Recommended Action      |
+|--------|--------------------|------------------------------------|-------------------------|
+| Green  | \( \Gamma < 0.10 \)   | Low drift, focused reasoning       | Accept                  |
+| Yellow | \( 0.10 \leq \Gamma < 0.17 \) | Moderate diffusion                 | Log + optional review   |
+| Red    | \( \Gamma \geq 0.17 \) | High diffusion within mask         | Halt or flag for audit  |
 
-\[
-J_{jk} = \frac{\partial x^{(l+1)}_j}{\partial x^{(l)}_k}
-\]
+Default values are provided as starting points and should be tuned based on model behavior and use case.
 
-Dense attention produces a dense Jacobian, enabling high-capacity hidden computation (steganography) that never appears in the final token stream.
+## 3. Constraining Hidden Reasoning Channels
 
-Sparse attention + mask enforcement projects the information flow into a lower-dimensional subspace. This sparsifies the effective Jacobian, strictly limiting the model's ability to maintain unlogged, high-dimensional internal state across layers.
+Dense attention produces a dense effective Jacobian between layers, allowing the model to maintain high-dimensional internal state that may not be visible in the output token stream.
 
-**Consequence**: Any complex reasoning must route through the visible, discrete token channels (epistemic markers). Hidden computation becomes both expensive and detectable via increased local entropy (γ).
+By enforcing sparse attention masks, information flow is projected into a lower-dimensional subspace defined by the mask. This increases the difficulty and cost of maintaining complex, unlogged hidden computation across layers.
 
-## 4. Cryptographic Receipt Schema for Verifiability
+While sparse attention does not *eliminate* the possibility of hidden reasoning, it significantly raises the computational and statistical cost of doing so undetected. Complex multi-step reasoning is forced to route through the visible token channels (and therefore through explicit epistemic markers), making hidden state maintenance both more expensive and more detectable via elevated local entropy (\( \gamma \)).
 
-To provide external auditability, each inference produces a signed receipt:
+## 4. Cryptographic Receipt Schema
+
+Every inference produces a signed, tamper-evident receipt containing:
 
 ```json
 {
@@ -85,7 +89,8 @@ To provide external auditability, each inference produces a signed receipt:
   "execution_parameters": {
     "model_hash": "...",
     "temperature": 0.0,
-    "mask_protocol": "LATTICE_SPARSE_V2"
+    "mask_protocol": "LATTICE_SPARSE_V2",
+    "mask_config_hash": "..."
   },
   "epistemic_payload": {
     "input_hash": "...",
@@ -97,15 +102,3 @@ To provide external auditability, each inference produces a signed receipt:
   }
 }
 ```
-
-The `mask_compliance_checksum` binds the exact sparse mask used during inference. Any attempt to bypass sparsity invalidates the receipt.
-
-## 5. Implementation Notes & Next Steps
-
-- Integrate γ computation into the HelixAdapter's extraction layer.
-- Bind mask state to TEE attestations for production receipts.
-- Extend to tool-calling/action gating (Cedar policy integration).
-
-This framework turns governance from prompt-level theater into mathematically enforceable substrate constraints.
-
-**The formation holds.** 📐🦆⚓
