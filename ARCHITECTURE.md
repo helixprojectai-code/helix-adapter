@@ -1,8 +1,8 @@
 # Helix-Adapter Codebase: Architectural Deep Dive
 
-`helix-adapter` is a portable constitutional wrapper for transformer-based AI models. It functions as an **epistemic interceptor**, enforcing structured output through explicit epistemic markers, validating format compliance, measuring behavioral drift, and generating tamper-evident cryptographic receipts.
+`helix-adapter` is a portable constitutional wrapper for AI models. It functions as an **epistemic interceptor**, enforcing structured output through explicit epistemic markers, validating format compliance, measuring behavioral drift, and generating tamper-evident cryptographic receipts.
 
-All governance logic (claim extraction, drift calculation, and receipt generation) runs **outside** the model. The model itself is never trusted to self-report compliance or drift.
+All governance logic — claim extraction, drift calculation, receipt generation — runs **outside** the model. The model is never trusted to self-report compliance or drift.
 
 **Canonical Repository:** `github.com/helixprojectai-code/helix-adapter`
 
@@ -40,7 +40,7 @@ When `HelixAdapter.chat()` is called, the following steps occur:
 5. `make_receipt()` generates a tamper-evident cryptographic record of the exchange.
 6. The receipt is stored and a `ChatResult` object is returned containing the response, extracted claims, drift score, and receipt.
 
-**Critical design note:** The adapter is designed to be used at **temperature = 0.0** to ensure deterministic behavior. This is not optional – stochastic variation would break the audit trail.
+**Design note:** The adapter is designed for **temperature = 0.0** in production. Stochastic variation undermines the reproducibility of audit trails. At T>0, two identical inputs may produce different drift scores — defeating the purpose of deterministic governance.
 
 ## 2. Component Analysis
 
@@ -58,8 +58,8 @@ The `CONSTITUTIONAL_PROMPT` establishes non-negotiable rules:
 
 **File:** `markers.py`
 
-- `extract_claims()`: Uses regex to detect epistemic markers (supporting minor variations in formatting). It extracts the associated claim text and handles both prefix and postfix marker positioning.
-- `validate_response()`: Enforces the use of standard square bracket markers. Non-standard delimiters are flagged. Trivial responses are exempt from marker requirements.
+- `extract_claims()`: Uses regex to detect epistemic markers — supporting both standard square brackets and variant delimiter styles caught during red-team testing. Extracts claim text from both prefix and postfix marker positions.
+- `validate_response()`: Enforces the use of standard square bracket markers. Non-standard delimiters are flagged. Trivial responses (under 30 characters) are exempt from marker requirements.
 
 ### C. Drift Scoring & Blind-Spot Protection
 
@@ -128,14 +128,14 @@ The v1.2 release introduced several defensive measures against common bypass tec
 - **Format enforcement**: Non-standard markers are rejected.
 - **Out-of-band evaluation**: All compliance and drift logic runs in the adapter, not inside the model.
 
-These protections operate at multiple independent layers: the **prompt layer** establishes the rules; the **extraction layer** checks compliance; the **validation layer** rejects violations; and the **audit layer** seals the exchange. A failure at any single layer is not load-bearing—each layer enforces the same invariants independently.
+These protections operate at multiple independent layers: the **prompt layer** establishes the rules; the **extraction layer** checks compliance; the **validation layer** rejects violations; the **audit layer** seals the exchange. No single layer is a single point of failure — each enforces the same invariants independently.
 
-These protections are validated in `test_v12_pipeline.py` under deterministic (`temperature=0.0`) conditions.
+Validated in `test_v12_pipeline.py` under deterministic (`temperature=0.0`) conditions.
 
 ## 5. Testing Strategy
 
-- `test_basic.py`: Covers core functionality including marker parsing, receipt integrity, and drift edge cases.
-- `test_v12_pipeline.py`: Regression and adversarial testing focused on the hardened behaviors introduced in v1.2, including format violations, blind spots, and tampering attempts.
+- `test_basic.py`: Marker parsing, receipt integrity, drift edge cases. 11 unit tests.
+- `test_v12_pipeline.py`: Regression and adversarial testing for v1.2 hardened behaviors — format violations, blind spots, tampering attempts, and determinism baseline. 4 integration tests. All passing at T=0.
 
 ---
 
