@@ -357,8 +357,15 @@ async def compare(req: CompareRequest, request: Request = None):
         }
 
     tasks = [call_one(m, l, a, s) for m, l, a, s in adapters]
-    results = await asyncio.gather(*tasks)
-    return {"message": req.message, "results": results}
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    # Filter out failed models and return errors alongside results
+    output = []
+    for i, r in enumerate(results):
+        if isinstance(r, Exception):
+            output.append({"model": adapters[i][0], "error": str(r)})
+        else:
+            output.append(r)
+    return {"message": req.message, "results": output}
 
 
 @app.post("/api/chat")
@@ -371,30 +378,35 @@ async def chat(req: ChatRequest):
         raise HTTPException(502, f"Model call failed: {e}")
 
     # Constitutional compliance validation (lenient mode: inject footer on violation)
-    validation = validate_response(result.response)
-    if not validation["compliant"]:
-        print(f"[CONSTITUTIONAL VIOLATION] {validation['issues']}", flush=True)
-        footer = (
-            f"\n\n[UNCERTAIN] Constitutional audit note: the preceding response "
-            f"was flagged for potential marker-format violations: "
-            f"{'; '.join(validation['issues'])}. "
-            f"The response may not meet full constitutional standards."
-        )
-        result.response += footer
-        # Re-extract claims and drift with the footer included
-        result.claims = extract_claims(result.response)
-        result.drift = compute_drift(result.response, result.claims)
-        # Rebuild receipt
-        from helix_adapter.receipt import make_receipt
-        result.receipt = make_receipt(
-            user_message=req.message,
-            assistant_response=result.response,
-            claims=result.claims,
-            model=adapter.model_name,
-            constitutional_prompt=CONSTITUTIONAL_PROMPT,
-            drift_score=result.drift,
-            drift_method=adapter.drift_method,
-        )
+    try:
+        validation = validate_response(result.response)
+        if not validation["compliant"]:
+            print(f"[CONSTITUTIONAL VIOLATION] {validation['issues']}", flush=True)
+            footer = (
+                f"\n\n[UNCERTAIN] Constitutional audit note: the preceding response "
+                f"was flagged for potential marker-format violations: "
+                f"{'; '.join(validation['issues'])}. "
+                f"The response may not meet full constitutional standards."
+            )
+            result.response += footer
+            # Re-extract claims and drift with the footer included
+            result.claims = extract_claims(result.response)
+            result.drift = compute_drift(result.response, result.claims)
+            # Rebuild receipt
+            from helix_adapter.receipt import make_receipt
+            result.receipt = make_receipt(
+                user_message=req.message,
+                assistant_response=result.response,
+                claims=result.claims,
+                model=adapter.model_name,
+                constitutional_prompt=CONSTITUTIONAL_PROMPT,
+                drift_score=result.drift,
+                drift_method=adapter.drift_method,
+            )
+    except Exception as e:
+        print(f"[VALIDATION ERROR] {e}", flush=True)
+        # Re-raise as a proper HTTP error instead of crashing
+        raise HTTPException(422, f"Constitutional validation failed: {e}")
 
     _save_receipt(result.receipt)
     return {
