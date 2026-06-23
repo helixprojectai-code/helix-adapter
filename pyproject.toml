@@ -7,7 +7,7 @@ name = "helix-adapter"
 version = "1.0.0"
 description = "Portable constitutional adapter — deterministic governance layer for any AI model. Epistemic markers, drift detection, cryptographic receipts."
 readme = "README.md"
-license = {text = "Apache-2.0"}
+license = "Apache-2.0"
 authors = [
     {name = "Stephen Hope", email = "helix.project.ai@helixprojectai.com"},
 ]
@@ -37,7 +37,6 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
