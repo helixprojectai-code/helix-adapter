@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "helix-adapter"
-version = "0.1.0"
+version = "1.0.0"
 description = "Portable constitutional adapter — wraps any AI model with Helix epistemic markers, receipts, and drift detection"
 readme = "README.md"
 license = {text = "Apache-2.0"}
