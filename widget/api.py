@@ -12,7 +12,7 @@ import os, sys, time, json
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 import uvicorn
 
@@ -293,8 +293,10 @@ async def compare(req: CompareRequest, request: Request = None):
         bypass_key = ""
         if request:
             bypass_key = request.headers.get("X-Compare-Bypass-Key", "")
+            if not bypass_key:
+                bypass_key = request.query_params.get("bypass_key", "")
         if bypass_key != COMPARE_BYPASS_KEY:
-            raise HTTPException(403, "Constitutional bypass requires X-Compare-Bypass-Key header.")
+            raise HTTPException(403, "Constitutional bypass requires X-Compare-Bypass-Key header or bypass_key query param.")
 
     adapters = []
     errors = []
@@ -462,8 +464,17 @@ async def serve_page():
     html = html.replace("{{DRIFT_COLOR}}", drift_color)
     html = html.replace("{{RECEIPT_COUNT}}", str(len(_load_receipts(999))))
     html = html.replace("{{CONSTITUTIONAL_PROMPT}}", _esc(CONSTITUTIONAL_PROMPT))
+    html = html.replace("{{COMPARE_BYPASS_KEY}}", COMPARE_BYPASS_KEY)
 
     return HTMLResponse(html)
+
+
+THEORY_FILE = HERE / "templates" / "theory.html"
+
+
+@app.get("/theory", response_class=FileResponse)
+async def serve_theory():
+    return FileResponse(THEORY_FILE, media_type="text/html")
 
 
 if __name__ == "__main__":
