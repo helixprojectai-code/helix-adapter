@@ -6,8 +6,8 @@
 """Receipt generation — cryptographically anchored exchange records."""
 
 import hashlib
-import time
 import json
+import time
 
 
 def make_receipt(
@@ -37,9 +37,7 @@ def make_receipt(
     """
     payload = user_message + assistant_response
     receipt = {
-        "exchange_id": hashlib.sha256(
-            (payload + str(time.time())).encode()
-        ).hexdigest()[:16],
+        "exchange_id": hashlib.sha256((payload + str(time.time())).encode()).hexdigest()[:16],
         "timestamp": time.time(),
         "model": model,
         "constitutional_prompt": constitutional_prompt,

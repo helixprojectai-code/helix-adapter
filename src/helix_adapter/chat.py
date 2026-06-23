@@ -16,9 +16,9 @@ import os
 import sys
 from pathlib import Path
 
-from helix_adapter import HelixAdapter
 from openai import OpenAI
 
+from helix_adapter import HelixAdapter
 
 HELIX_DIR = Path.home() / ".helix"
 CONFIG_PATH = HELIX_DIR / "config.json"
@@ -45,7 +45,10 @@ def main():
 
     def call_model(messages):
         resp = client.chat.completions.create(
-            model=model, messages=messages, temperature=0.7, max_tokens=4096,
+            model=model,
+            messages=messages,
+            temperature=0.7,
+            max_tokens=4096,
         )
         return resp.choices[0].message.content
 
@@ -63,6 +66,7 @@ def main():
 
     # Interactive mode
     import os as _os
+
     _os.system("")  # enable ANSI on Windows
     print(f"  ⚕ Helix Constitutional Chat  |  {model}")
     print("  " + "─" * 42)

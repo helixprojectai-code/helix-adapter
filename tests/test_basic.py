@@ -1,9 +1,9 @@
 """Basic tests for helix-adapter."""
 
-from helix_adapter.markers import extract_claims, count_claims
-from helix_adapter.receipt import make_receipt
 from helix_adapter.drift import compute_drift, compute_running_drift
+from helix_adapter.markers import count_claims, extract_claims
 from helix_adapter.prompt import CONSTITUTIONAL_PROMPT, MARKERS
+from helix_adapter.receipt import make_receipt
 
 
 def test_extract_claims_basic():
@@ -62,8 +62,10 @@ def test_receipt_has_hash():
 def test_drift_perfect():
     """Perfectly labeled response has near-zero drift."""
     resp = "[FACT] A fact. [REASONED] A reasoning."
-    claims = [{"label": "FACT", "text": "A fact."},
-              {"label": "REASONED", "text": "A reasoning."}]
+    claims = [
+        {"label": "FACT", "text": "A fact."},
+        {"label": "REASONED", "text": "A reasoning."},
+    ]
     d = compute_drift(resp, claims)
     # Inter-sentence whitespace may contribute tiny drift (< 0.03)
     assert d < 0.03, f"Expected near-zero drift, got {d}"
@@ -78,7 +80,10 @@ def test_drift_unlabeled():
 
 def test_running_drift():
     exchanges = [
-        {"assistant_response": "[FACT] One.", "claims": [{"label": "FACT", "text": "One."}]},
+        {
+            "assistant_response": "[FACT] One.",
+            "claims": [{"label": "FACT", "text": "One."}],
+        },
         {"assistant_response": "Pure text without any markers at all.", "claims": []},
     ]
     d = compute_running_drift(exchanges)

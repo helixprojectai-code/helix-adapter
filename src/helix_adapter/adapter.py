@@ -12,12 +12,13 @@ Usage:
     print(result.receipt)
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable
-from .prompt import CONSTITUTIONAL_PROMPT, system_messages
-from .markers import extract_claims
-from .receipt import make_receipt
+
 from .drift import compute_drift
+from .markers import extract_claims
+from .prompt import CONSTITUTIONAL_PROMPT, system_messages
+from .receipt import make_receipt
 
 
 @dataclass
@@ -106,4 +107,5 @@ class HelixAdapter:
         if not self._history:
             return 0.0
         from .drift import compute_running_drift
+
         return compute_running_drift(self._history, method=self.drift_method)

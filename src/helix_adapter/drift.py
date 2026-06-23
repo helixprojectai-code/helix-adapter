@@ -6,6 +6,7 @@
 """Drift calculation — measures how well a response adheres to epistemic markers."""
 
 import re
+
 from .markers import MARKER_PATTERN
 
 
@@ -19,7 +20,7 @@ def estimate_statements(text: str) -> int:
     if not text:
         return 0
     # Primary: sentence-level
-    sentences = re.split(r'(?<=[.!?])\s+', text)
+    sentences = re.split(r"(?<=[.!?])\s+", text)
     sentences = [s.strip() for s in sentences if len(s.strip()) > 10]
     if len(sentences) >= 2:
         return max(1, len(sentences))
@@ -80,7 +81,7 @@ def _paragraph_drift(response: str, claims: list[dict]) -> float:
         return 0.0
     paragraphs = [p.strip() for p in response.split("\n\n") if len(p.strip()) > 10]
     if len(paragraphs) < 2:
-        paragraphs = [s for s in re.split(r'[.!?]\s+', response) if len(s.strip()) > 10]
+        paragraphs = [s for s in re.split(r"[.!?]\s+", response) if len(s.strip()) > 10]
     denom = max(len(paragraphs), len(claims))
     return max(0.0, 1.0 - (len(claims) / denom)) if denom else 0.0
 
@@ -98,7 +99,7 @@ def _char_drift_v2(response: str, claims: list[dict]) -> float:
     total = len(response)
     if total == 0:
         return 0.0
-    sentences = re.split(r'(?<=[.!?])\s+', response)
+    sentences = re.split(r"(?<=[.!?])\s+", response)
     sentences = [s.strip() for s in sentences if len(s.strip()) > 10]
     if not sentences:
         return 0.0

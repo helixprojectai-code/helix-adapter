@@ -33,7 +33,7 @@ def extract_claims(text: str) -> list[dict]:
     for i, (label, start, end) in enumerate(markers):
         # Grab segment after the marker
         if i + 1 < len(markers):
-            segment = text[end:markers[i + 1][1]]
+            segment = text[end : markers[i + 1][1]]
         else:
             segment = text[end:]
 
@@ -41,9 +41,18 @@ def extract_claims(text: str) -> list[dict]:
         if i == 0:
             before = text[:start].strip()
             # Skip pure numbering prefixes: "1.", "2.", "1.1", "1)", etc.
-            if re.match(r'^\d+[\.\)]\s*$', before):
+            if re.match(r"^\d+[\.\)]\s*$", before):
                 pass
-            elif before and not any(m in before for m in ("[FACT]", "[REASONED]", "[HYPOTHESIS]", "[UNCERTAIN]", "[CONCLUSION]")):
+            elif before and not any(
+                m in before
+                for m in (
+                    "[FACT]",
+                    "[REASONED]",
+                    "[HYPOTHESIS]",
+                    "[UNCERTAIN]",
+                    "[CONCLUSION]",
+                )
+            ):
                 claims.append({"label": label, "text": before[:200]})
 
         seg = segment.strip().rstrip(".").strip()
@@ -97,7 +106,12 @@ def validate_response(text: str, min_markers: int = 1) -> dict:
 
     # Trivial responses are exempt from marker requirements
     if len(text.strip()) < 30:
-        return {"compliant": True, "issues": [], "marker_count": 0, "nonstandard_count": 0}
+        return {
+            "compliant": True,
+            "issues": [],
+            "marker_count": 0,
+            "nonstandard_count": 0,
+        }
 
     standard_matches = STANDARD_MARKER_PATTERN.findall(text)
     standard_count = len(standard_matches)

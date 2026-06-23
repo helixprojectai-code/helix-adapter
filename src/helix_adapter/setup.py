@@ -13,11 +13,8 @@ Walks through endpoint, API key, and model selection, writes
 """
 
 import json
-import os
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
-
 
 HELIX_DIR = Path.home() / ".helix"
 CONFIG_PATH = HELIX_DIR / "config.json"
