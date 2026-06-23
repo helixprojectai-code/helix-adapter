@@ -435,6 +435,7 @@ async def get_receipts(limit: int = 50):
 
 
 @app.get("/health")
+@app.get("/api/health")
 async def health():
     return {"status": "ok", "time": time.time(), "drift": adapter.running_drift(), "receipts": len(_load_receipts(999))}
 
@@ -495,6 +496,45 @@ THEORY_FILE = HERE / "templates" / "theory.html"
 @app.get("/theory", response_class=FileResponse)
 async def serve_theory():
     return FileResponse(THEORY_FILE, media_type="text/html")
+
+
+@app.post("/v1/chat/completions")
+async def openai_chat(request: Request):
+    """OpenAI-compatible endpoint. Accepts standard OpenAI chat format,
+    runs through the constitutional adapter, returns extended response."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "Invalid JSON body")
+
+    messages = body.get("messages", [])
+    if not messages:
+        raise HTTPException(400, "messages array required")
+
+    # Extract the last user message for the adapter
+    user_msgs = [m for m in messages if m.get("role") == "user"]
+    if not user_msgs:
+        raise HTTPException(400, "at least one user message required")
+    query = user_msgs[-1]["content"]
+
+    result = adapter.chat(query)
+    _save_receipt(result.receipt)
+
+    return {
+        "id": f"chatcmpl-{result.receipt.get('exchange_id', '')}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": body.get("model", adapter.model_name),
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": result.response},
+            "finish_reason": "stop",
+        }],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        "claims": [c["label"] for c in result.claims],
+        "drift_score": result.drift,
+        "receipt": result.receipt,
+    }
 
 
 if __name__ == "__main__":
