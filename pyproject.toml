@@ -5,14 +5,54 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "helix-adapter"
 version = "1.0.0"
-description = "Portable constitutional adapter — wraps any AI model with Helix epistemic markers, receipts, and drift detection"
+description = "Portable constitutional adapter — deterministic governance layer for any AI model. Epistemic markers, drift detection, cryptographic receipts."
 readme = "README.md"
 license = {text = "Apache-2.0"}
 authors = [
+    {name = "Stephen Hope", email = "helix.project.ai@helixprojectai.com"},
+]
+maintainers = [
     {name = "Helix AI Innovations Inc.", email = "helix.project.ai@helixprojectai.com"},
 ]
 requires-python = ">=3.10"
 dependencies = []
+keywords = [
+    "AI governance",
+    "constitutional AI",
+    "LLM safety",
+    "epistemic markers",
+    "drift detection",
+    "AI audit trail",
+    "cryptographic receipts",
+    "model-agnostic",
+    "AI verification",
+    "AI compliance",
+    "red-teaming",
+    "jailbreak defense",
+    "AI alignment",
+    "tamper-evident",
+    "open-source",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+Homepage = "https://helixaiinnovations.ca"
+Repository = "https://github.com/helixprojectai-code/helix-adapter"
+"Live Demo" = "https://helixaiinnovations.ca/chat/"
+"Bug Tracker" = "https://github.com/helixprojectai-code/helix-adapter/issues"
 
 [project.scripts]
 helix-setup = "helix_adapter.setup:main"
