@@ -6,18 +6,10 @@ on:
   release:
     types: [published]
 
-permissions:
-  contents: read
-
 jobs:
   deploy:
     name: Build and Publish Artifacts
     runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/helix-adapter
-    permissions:
-      id-token: write  # Mandated for PyPI Trusted Publishing OIDC handshake
 
     steps:
     - name: Checkout Code Baseline
@@ -39,5 +31,8 @@ jobs:
     - name: Verify Artifact Metadata Consistency
       run: twine check dist/*
 
-    - name: Publish Payload to PyPI via Trusted Publisher
-      uses: pypa/gh-action-pypi-publish@release/v1
+    - name: Publish to PyPI
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+      run: twine upload dist/*
