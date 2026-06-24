@@ -31,11 +31,6 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/helixprojectai-code/helix-adapter"
-Documentation = "https://github.com/helixprojectai-code/helix-adapter/blob/main/README.md"
-Repository = "https://github.com/helixprojectai-code/helix-adapter"
-"Bug Tracker" = "https://github.com/helixprojectai-code/helix-adapter/issues"
-[project.urls]
 Homepage = "https://helixaiinnovations.ca"
 Repository = "https://github.com/helixprojectai-code/helix-adapter"
 "Live Demo" = "https://helixaiinnovations.ca/chat/"
