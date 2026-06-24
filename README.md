@@ -189,7 +189,7 @@ Five-layer defense:
 
 ## Try It
 
-A live Helix Constitutional Chat demo is running at **[helixaiinnovations.ca/chat/](https://helixaiinnovations.ca/chat/)** — DM me for an access key. Includes A/B model comparison, drift gauge, receipt export, and the full v1.2 constitutional prompt. See `examples/receipts.json` for real output from the live instance.
+A live Helix Constitutional Chat demo is running at **[helixaiinnovations.ca/chat/](https://helixaiinnovations.ca/chat/)** — DM [Stephen Hope on LinkedIn](https://www.linkedin.com/in/stephen-hope-75497937a) for access.. Includes A/B model comparison, drift gauge, receipt export, and the full v1.2 constitutional prompt. See `examples/receipts.json` for real output from the live instance.
 
 ## Compatibility
 
