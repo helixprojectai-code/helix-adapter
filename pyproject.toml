@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "helix-adapter"
-version = "1.2.1"
+version = "1.2.2"
 description = "Portable constitutional adapter for any LLM. Forces epistemic markers, real-time drift detection, and tamper-evident receipts."
 readme = "README.md"
 license = {text = "Apache-2.0"}
