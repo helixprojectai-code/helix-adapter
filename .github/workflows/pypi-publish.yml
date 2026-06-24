@@ -1,6 +1,8 @@
 name: Publish Helix-Adapter to PyPI
 
 on:
+  push:
+    tags: ['v*']
   release:
     types: [published]
 
