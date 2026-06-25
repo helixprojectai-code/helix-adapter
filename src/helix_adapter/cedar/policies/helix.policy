@@ -1,0 +1,77 @@
+// Helix Agent Policy — Dual-Gate Containment
+// RFC 0003 reference implementation
+//
+// Based on Cedar best practices:
+// - Head constraints define the policy scope
+// - Schema drives entity and action structure
+// - Structured context, not string matching in when clauses
+
+// --- Response Gate (Duck Gate) ---
+
+permit(
+    principal in Helix::Agent,
+    action == Helix_Governance::Action::"respond",
+    resource in Helix::Environment
+)
+when {
+    context.drift_score < 0.17 &&
+    context.marker_count >= 1 &&
+    context.has_valid_receipt
+};
+
+// --- Action Gate (Cedar Gate) ---
+
+// Block destructive operations by default
+forbid(
+    principal in Helix::Agent,
+    action,
+    resource
+)
+when {
+    action in [
+        Helix::Action::"bash",
+        Helix::Action::"wallet_transfer"
+    ]
+};
+
+// Allow bash in sandboxed workspaces
+permit(
+    principal in Helix::Agent,
+    action == Helix::Action::"bash",
+    resource in Helix::Environment
+)
+when {
+    resource has path &&
+    resource.path like "/home/agent/sandbox/*"
+};
+
+// Allow file operations (patch, write, edit)
+permit(
+    principal in Helix::Agent,
+    action in [
+        Helix::Action::"apply_patch",
+        Helix::Action::"write_file",
+        Helix::Action::"edit_file"
+    ],
+    resource
+)
+when {
+    resource has path &&
+    !(resource.path like "/etc/*") &&
+    !(resource.path like "*.env")
+};
+
+// Allow API calls to approved endpoints
+permit(
+    principal in Helix::Agent,
+    action == Helix::Action::"api_call",
+    resource
+)
+when {
+    context has endpoint &&
+    (
+        context.endpoint like "https://api.github.com/*" ||
+        context.endpoint like "https://pypi.org/*" ||
+        context.endpoint like "https://*.openai.azure.com/*"
+    )
+};
