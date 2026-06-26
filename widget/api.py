@@ -90,6 +90,14 @@ COMPARE_BYPASS_KEY = os.environ.get("HELIX_COMPARE_BYPASS_KEY", "")
 
 # ── Provider registry ──────────────────────────────────────────────
 PROVIDERS = {
+    "deepseek-4-pro": {
+        "endpoint": "https://helix-nodes-resource.openai.azure.com/openai/v1",
+        "key_env": ["AZURE_OPENAI_FOUNDRY_KEY"],
+        "label": "DeepSeek 4 Pro (Azure)",
+        "temperature": 0.7,
+        "azure_deployment": "DeepSeek-V4-Pro",
+        "max_tokens_param": "max_completion_tokens",
+    },
     "deepseek-chat": {
         "endpoint": "https://api.deepseek.com/v1",
         "key_env": ["DEEPSEEK_API_KEY"],

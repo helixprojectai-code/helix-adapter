@@ -129,7 +129,10 @@ class CedarPolicy:
         try:
             import cedar  # noqa: F401
         except ImportError:
-            self._validation_error = "cedar not installed — running in fallback mode (pip install cedar-python)"
+            msg = "cedar not installed — running in fallback mode (pip install cedar-python)"
+            if self.strict:
+                raise ImportError(msg)
+            self._validation_error = msg
             return
 
         if not self.policy_text:
@@ -166,9 +169,13 @@ class CedarPolicy:
                     self._validation_error = msg
                     self._policy_set = None
             except ImportError:
-                pass
+                msg = "cedar_python not installed — running in fallback mode"
+                self._validation_error = msg
+                if self.strict:
+                    raise ImportError(msg)
             except Exception as e:
-                msg = f"Schema validation error: {e}"
+                msg = f"Failed to initialize Cedar: {e}"
+                self._validation_error = msg
                 if self.strict:
                     raise
                 self._validation_error = msg
