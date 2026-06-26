@@ -43,6 +43,7 @@ helix-chat = "helix_adapter.chat:main"
 [project.optional-dependencies]
 dev = ["pytest", "black", "ruff"]
 widget = ["fastapi", "uvicorn", "openai", "anthropic"]
+cedar = ["cedar_python"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

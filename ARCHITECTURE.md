@@ -132,6 +132,16 @@ These protections operate at multiple independent layers: the **prompt layer** e
 
 Validated in `test_v12_pipeline.py` under deterministic (`temperature=0.0`) conditions.
 
+### Cedar Dual-Gate (v1.3 preview)
+
+The feature/cedar-policy-gating branch adds **CNCF Cedar** integration for dual-gate
+containment per RFC 0003:
+
+- **Duck Gate** (response): Epistemic markers, drift scoring, receipts — unchanged from v1.2
+- **Cedar Gate** (action): Declarative policy evaluation on tool use, shell, API calls before execution
+- **Fail-closed**: Unavailable policy engine = default deny, never default permit
+- **Lattice-approved**: Architecture reviewed and approved by four independent AI systems
+
 ## 5. Testing Strategy
 
 - `test_basic.py`: Marker parsing, receipt integrity, drift edge cases. 11 unit tests.

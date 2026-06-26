@@ -184,6 +184,31 @@ Five-layer defense:
 | **Algorithm** | Drift blind-spot fixed — substantive responses with zero extracted claims correctly report 1.0 drift. |
 | **Access** | Compare endpoint `sp:none` bypass locked behind authorization key. |
 
+## Cedar Policy Gating (v1.3 preview)
+
+The next layer integrates CNCF Cedar as a declarative policy engine for
+**dual-gate containment** — Duck Gate for response governance, Cedar Gate for
+action governance. A single `.cedar` policy file governs the entire agent
+lifecycle.
+
+```python
+from helix_adapter.cedar import CedarPolicy
+
+policy = CedarPolicy()
+ok, reason = policy.evaluate(
+    principal='Helix::Agent::"sentinel-001"',
+    action='Helix::Action::"bash"',
+    resource='Helix::Environment::"/sandbox"',
+    context={"command": "rm -rf /tmp"},
+)
+# ok == True only if command is within sandbox
+```
+
+Four independent AI systems reviewed and approved the architecture.
+RFC 0003 details the full specification. Fail-closed: missing policy = default deny.
+
+> *"The model suggests. Cedar decides. The receipt proves."*
+
 > *"The markers ARE the constitution. Removing them is a constitutional violation."*
 > — Helix Constitutional Prompt v1.2, Invariant 4.6
 
