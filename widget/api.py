@@ -102,12 +102,12 @@ PROVIDERS = {
         "label": "Kimi K2.5",
         "temperature": 1.0,
     },
-    "azure-grok-4-20-reasoning": {
-        "endpoint": "https://helix-deploy-resource.openai.azure.com/openai/v1",
-        "key_env": ["AZURE_OPENAI_API_KEY"],
-        "label": "Grok 4.20 (Azure)",
+    "grok-4.3": {
+        "endpoint": "https://helix-nodes-resource.openai.azure.com/openai/v1",
+        "key_env": ["AZURE_OPENAI_FOUNDRY_KEY"],
+        "label": "Grok 4.3 (Azure)",
         "temperature": 0.7,
-        "azure_deployment": "grok-4-20-reasoning",
+        "azure_deployment": "grok-4.3",
     },
     "azure-deepseek-v3-2": {
         "endpoint": "https://helix-deploy-resource.openai.azure.com/openai/v1",
