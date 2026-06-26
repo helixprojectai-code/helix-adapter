@@ -1,0 +1,20 @@
+// Helix Foundry Routing Schema
+namespace Helix {
+    entity Agent in [Principal];
+    entity ModelPool in [Resource];
+    entity Environment in [Resource];
+
+    action infer {
+        appliesTo {
+            principal: [Agent],
+            resource: [ModelPool],
+        };
+        context: {
+            task_complexity: Long,
+            drift_tolerance: Decimal,
+            priority: String,
+            action_type: String,
+            locale: String,
+        };
+    };
+}
