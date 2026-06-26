@@ -1,0 +1,4 @@
+.env
+.azure-key
+*.bak
+foundry-ledger.jsonl
