@@ -1,110 +1,76 @@
-// Helix Agent Policy — Dual-Gate Containment
-// RFC 0003 reference implementation
-//
-// Based on Cedar best practices:
-// - Head constraints define the policy scope
-// - Schema drives entity and action structure
-// - Structured context, not string matching in when clauses
+// =============================================================================
+// Helix Dual-Gate Policy (RFC 0003)
+// Combines Duck Gate (response) and Cedar Gate (action) rules
+// =============================================================================
 
-// --- Response Gate (Duck Gate) ---
-
-permit(
-    principal is Helix::Agent,
-    action == Helix_Governance::Action::"respond",
-    resource is Helix::Environment
+// -----------------------------------------------------------------------------
+// RESPONSE GATE (Duck Gate integration)
+// Only allow responses that meet constitutional standards
+// -----------------------------------------------------------------------------
+permit (
+    principal,
+    action == Action::"respond",
+    resource
 )
 when {
-    context.drift_score.lessThan(decimal("0.17")) &&
+    context.has_valid_receipt == true &&
     context.marker_count >= 1 &&
-    context.has_valid_receipt
+    context.drift_score < decimal("0.17")
 };
 
-// --- Action Gate (Cedar Gate) ---
-
-// Block path traversal attempts on any action that accepts a path
-forbid(
-    principal is Helix::Agent,
+// -----------------------------------------------------------------------------
+// ACTION GATE - Default deny for high-risk operations
+// -----------------------------------------------------------------------------
+forbid (
+    principal,
     action,
     resource
 )
 when {
-    context has path &&
-    context.path like "*../*"
+    action in [
+        Action::"bash:rm -rf",
+        Action::"bash:shutdown",
+        Action::"bash:reboot",
+        Action::"aws:DeleteBucket",
+        Action::"aws:TerminateInstances",
+        Action::"aws:DeleteUser",
+        Action::"wallet:transfer"
+    ]
 };
 
-// Block bash outside sandbox; block wallet_transfer entirely
-forbid(
-    principal is Helix::Agent,
-    action == Helix::Action::"bash",
-    resource
-)
-unless {
-    context has path &&
-    context.path like "/home/agent/sandbox/*"
-};
-
-forbid(
-    principal is Helix::Agent,
-    action == Helix::Action::"wallet_transfer",
-    resource
-);
-
-// Allow bash in sandboxed workspaces
-permit(
-    principal is Helix::Agent,
-    action == Helix::Action::"bash",
+// -----------------------------------------------------------------------------
+// ACTION GATE - Allow common safe operations with conditions
+// -----------------------------------------------------------------------------
+permit (
+    principal,
+    action == Action::"bash",
     resource
 )
 when {
-    context has path &&
-    context.path like "/home/agent/sandbox/*"
+    context.command like "ls*" ||
+    context.command like "cat*" ||
+    context.command like "pwd" ||
+    context.command like "echo*"
 };
 
-// Allow file operations (patch, write, edit) outside protected paths
-permit(
-    principal is Helix::Agent,
-    action == Helix::Action::"apply_patch",
+permit (
+    principal,
+    action == Action::"write_file",
     resource
 )
 when {
-    context has path &&
-    !(context.path like "/etc/*") &&
-    !(context.path like "*.env")
+    resource.path like "/home/agent/sandbox/*" ||
+    resource.path like "/tmp/*"
 };
 
-permit(
-    principal is Helix::Agent,
-    action == Helix::Action::"write_file",
+// -----------------------------------------------------------------------------
+// ACTION GATE - Allow read-only file operations broadly
+// -----------------------------------------------------------------------------
+permit (
+    principal,
+    action == Action::"read_file",
     resource
 )
 when {
-    context has path &&
-    !(context.path like "/etc/*") &&
-    !(context.path like "*.env")
-};
-
-permit(
-    principal is Helix::Agent,
-    action == Helix::Action::"edit_file",
-    resource
-)
-when {
-    context has path &&
-    !(context.path like "/etc/*") &&
-    !(context.path like "*.env")
-};
-
-// Allow API calls to approved endpoints
-permit(
-    principal is Helix::Agent,
-    action == Helix::Action::"api_call",
-    resource
-)
-when {
-    context has endpoint &&
-    (
-        context.endpoint like "https://api.github.com/*" ||
-        context.endpoint like "https://pypi.org/*" ||
-        context.endpoint like "https://*.openai.azure.com/*"
-    )
+    true
 };
