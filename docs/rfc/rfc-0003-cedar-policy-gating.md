@@ -1,9 +1,9 @@
 # RFC 0003: Unified Policy Gating — Dual-Gate Containment with AWS Cedar
 
-**Status:** Draft
+**Status:** Lattice Approved (4/4 nodes reviewed)
 **Author:** Stephen Hope (Helix-TTD Custodian)
 **Date:** June 25, 2026
-**Version:** 0.1
+**Version:** 0.2 — Post-approval, pre-merge
 
 ## Abstract
 

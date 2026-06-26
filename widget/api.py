@@ -57,18 +57,32 @@ def _load_key() -> str:
     return os.environ.get("DEEPSEEK_API_KEY", "")
 
 
-client = OpenAI(api_key=_load_key(), base_url="https://api.deepseek.com/v1")
+# Default adapter — Azure Foundry (DeepSeek 4 Pro)
+foundry_client = None
+foundry_key = os.environ.get("AZURE_OPENAI_FOUNDRY_KEY", "")
+env_path = Path.home() / ".hermes" / ".env"
+if not foundry_key and env_path.exists():
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if line.startswith("AZURE_OPENAI_FOUNDRY_KEY="):
+            foundry_key = line.split("=", 1)[1].strip().strip("\"'")
+            break
+
+if foundry_key:
+    foundry_client = OpenAI(api_key=foundry_key, base_url="https://helix-nodes-resource.openai.azure.com/openai/v1")
 
 adapter = HelixAdapter(
-    model_fn=lambda msgs: client.chat.completions.create(
-        model="deepseek-chat",
+    model_fn=lambda msgs: (
+        foundry_client or OpenAI(api_key=_load_key(), base_url="https://api.deepseek.com/v1")
+    ).chat.completions.create(
+        model="DeepSeek-V4-Pro" if foundry_client else "deepseek-chat",
         messages=msgs,
         temperature=0.7,
-        max_tokens=4096,
+        **({"max_completion_tokens": 4096} if foundry_client else {"max_tokens": 4096}),
     )
     .choices[0]
     .message.content,
-    model_name="deepseek-chat",
+    model_name="deepseek-4-pro (Azure)" if foundry_client else "deepseek-chat",
 )
 
 # Bypass key for sp:none on compare endpoint — unset = disabled
@@ -76,6 +90,14 @@ COMPARE_BYPASS_KEY = os.environ.get("HELIX_COMPARE_BYPASS_KEY", "")
 
 # ── Provider registry ──────────────────────────────────────────────
 PROVIDERS = {
+    "deepseek-4-pro": {
+        "endpoint": "https://helix-nodes-resource.openai.azure.com/openai/v1",
+        "key_env": ["AZURE_OPENAI_FOUNDRY_KEY"],
+        "label": "DeepSeek 4 Pro (Azure)",
+        "temperature": 0.7,
+        "azure_deployment": "DeepSeek-V4-Pro",
+        "max_tokens_param": "max_completion_tokens",
+    },
     "deepseek-chat": {
         "endpoint": "https://api.deepseek.com/v1",
         "key_env": ["DEEPSEEK_API_KEY"],
@@ -102,12 +124,12 @@ PROVIDERS = {
         "label": "Kimi K2.5",
         "temperature": 1.0,
     },
-    "azure-grok-4-20-reasoning": {
-        "endpoint": "https://helix-deploy-resource.openai.azure.com/openai/v1",
-        "key_env": ["AZURE_OPENAI_API_KEY"],
-        "label": "Grok 4.20 (Azure)",
+    "grok-4.3": {
+        "endpoint": "https://helix-nodes-resource.openai.azure.com/openai/v1",
+        "key_env": ["AZURE_OPENAI_FOUNDRY_KEY"],
+        "label": "Grok 4.3 (Azure)",
         "temperature": 0.7,
-        "azure_deployment": "grok-4-20-reasoning",
+        "azure_deployment": "grok-4.3",
     },
     "azure-deepseek-v3-2": {
         "endpoint": "https://helix-deploy-resource.openai.azure.com/openai/v1",

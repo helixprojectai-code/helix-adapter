@@ -9,61 +9,94 @@
 // --- Response Gate (Duck Gate) ---
 
 permit(
-    principal in Helix::Agent,
+    principal is Helix::Agent,
     action == Helix_Governance::Action::"respond",
-    resource in Helix::Environment
+    resource is Helix::Environment
 )
 when {
-    context.drift_score < 0.17 &&
+    context.drift_score.lessThan(decimal("0.17")) &&
     context.marker_count >= 1 &&
     context.has_valid_receipt
 };
 
 // --- Action Gate (Cedar Gate) ---
 
-// Block destructive operations by default
+// Block path traversal attempts on any action that accepts a path
 forbid(
-    principal in Helix::Agent,
+    principal is Helix::Agent,
     action,
     resource
 )
 when {
-    action in [
-        Helix::Action::"bash",
-        Helix::Action::"wallet_transfer"
-    ]
+    context has path &&
+    context.path like "*../*"
 };
+
+// Block bash outside sandbox; block wallet_transfer entirely
+forbid(
+    principal is Helix::Agent,
+    action == Helix::Action::"bash",
+    resource
+)
+unless {
+    context has path &&
+    context.path like "/home/agent/sandbox/*"
+};
+
+forbid(
+    principal is Helix::Agent,
+    action == Helix::Action::"wallet_transfer",
+    resource
+);
 
 // Allow bash in sandboxed workspaces
 permit(
-    principal in Helix::Agent,
+    principal is Helix::Agent,
     action == Helix::Action::"bash",
-    resource in Helix::Environment
-)
-when {
-    resource has path &&
-    resource.path like "/home/agent/sandbox/*"
-};
-
-// Allow file operations (patch, write, edit)
-permit(
-    principal in Helix::Agent,
-    action in [
-        Helix::Action::"apply_patch",
-        Helix::Action::"write_file",
-        Helix::Action::"edit_file"
-    ],
     resource
 )
 when {
-    resource has path &&
-    !(resource.path like "/etc/*") &&
-    !(resource.path like "*.env")
+    context has path &&
+    context.path like "/home/agent/sandbox/*"
+};
+
+// Allow file operations (patch, write, edit) outside protected paths
+permit(
+    principal is Helix::Agent,
+    action == Helix::Action::"apply_patch",
+    resource
+)
+when {
+    context has path &&
+    !(context.path like "/etc/*") &&
+    !(context.path like "*.env")
+};
+
+permit(
+    principal is Helix::Agent,
+    action == Helix::Action::"write_file",
+    resource
+)
+when {
+    context has path &&
+    !(context.path like "/etc/*") &&
+    !(context.path like "*.env")
+};
+
+permit(
+    principal is Helix::Agent,
+    action == Helix::Action::"edit_file",
+    resource
+)
+when {
+    context has path &&
+    !(context.path like "/etc/*") &&
+    !(context.path like "*.env")
 };
 
 // Allow API calls to approved endpoints
 permit(
-    principal in Helix::Agent,
+    principal is Helix::Agent,
     action == Helix::Action::"api_call",
     resource
 )

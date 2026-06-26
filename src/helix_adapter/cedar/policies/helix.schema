@@ -1,0 +1,88 @@
+// Helix Dual-Gate Schema — RFC 0003
+// Defines entity types, actions, and context shapes for helix.policy
+//
+// Two namespaces:
+//   Helix            — principals, resources, and action gate actions
+//   Helix_Governance — response gate (Duck Gate) actions
+
+namespace Helix {
+    // Principals
+    entity Agent;
+
+    // Resources
+    entity Environment;  // workspaces, runtime environments
+    entity Resource;     // files, APIs, data objects
+
+    // ── Action Gate ──────────────────────────────────────────────────
+
+    // Shell execution — forbidden outside sandbox (path required to permit)
+    action "bash"
+        appliesTo {
+            principal: [Agent],
+            resource: [Environment],
+            context: {
+                path?: String
+            }
+        };
+
+    // Hard-blocked: no context permits this
+    action "wallet_transfer"
+        appliesTo {
+            principal: [Agent],
+            resource: [Resource]
+        };
+
+    // File operations — path required, blocked on /etc/* and *.env
+    action "apply_patch"
+        appliesTo {
+            principal: [Agent],
+            resource: [Resource],
+            context: {
+                path: String
+            }
+        };
+
+    action "write_file"
+        appliesTo {
+            principal: [Agent],
+            resource: [Resource],
+            context: {
+                path: String
+            }
+        };
+
+    action "edit_file"
+        appliesTo {
+            principal: [Agent],
+            resource: [Resource],
+            context: {
+                path: String
+            }
+        };
+
+    // Outbound API calls — endpoint required, allowlisted hosts only
+    action "api_call"
+        appliesTo {
+            principal: [Agent],
+            resource: [Resource],
+            context: {
+                endpoint: String
+            }
+        };
+}
+
+namespace Helix_Governance {
+    // ── Response Gate (Duck Gate) ────────────────────────────────────
+
+    // Permit model response if drift < 0.17, markers present, receipt valid
+    action "respond"
+        appliesTo {
+            principal: [Helix::Agent],
+            resource: [Helix::Environment],
+            context: {
+                drift_score: decimal,
+                marker_count: Long,
+                has_valid_receipt: Bool
+            }
+        };
+}
