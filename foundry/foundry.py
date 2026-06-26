@@ -18,18 +18,19 @@ API:
     GET  /                 → dashboard
 """
 
+import collections
 import json
 import os
 import sys
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from openai import OpenAI
 from pydantic import BaseModel
 
-from helix_adapter import HelixAdapter, CONSTITUTIONAL_PROMPT
+from helix_adapter import HelixAdapter
 from helix_adapter.drift import compute_drift
 from helix_adapter.markers import extract_claims
 
@@ -77,7 +78,7 @@ def cedar_route(context: dict) -> dict:
             decision = policy.evaluate(
                 principal='Helix::Agent::"foundry"',
                 action='Helix::Action::"infer"',
-                resource=f'ModelPool::"{pool}"',
+                resource=f'Helix::ModelPool::"{pool}"',
                 context=context,
             )
             if decision.authorized:
@@ -423,6 +424,21 @@ loadLedger();
 
 app = FastAPI(title="Helix Foundry", version="1.0.0")
 
+# Simple in-memory rate limiter: max 20 requests per IP per 60 seconds
+_RATE_LIMIT = 20
+_RATE_WINDOW = 60
+_rate_buckets: dict = collections.defaultdict(list)
+
+
+def _check_rate_limit(request: Request) -> None:
+    ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    hits = _rate_buckets[ip]
+    _rate_buckets[ip] = [t for t in hits if now - t < _RATE_WINDOW]
+    if len(_rate_buckets[ip]) >= _RATE_LIMIT:
+        raise HTTPException(429, f"Rate limit: {_RATE_LIMIT} requests per {_RATE_WINDOW}s")
+    _rate_buckets[ip].append(now)
+
 
 class ChatRequest(BaseModel):
     model: str
@@ -434,6 +450,10 @@ class RoutedChatRequest(BaseModel):
     message: str
     resource: str = "default"
     user_id: str = "node"
+    task_complexity: int = 5
+    drift_tolerance: float = 0.10
+    priority: str = "interactive"
+    locale: str = "en"
 
 
 def _save_entry(entry: dict):
@@ -458,7 +478,8 @@ def _load_entries(limit: int = 100) -> list:
 
 
 @app.post("/chat")
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, request: Request):
+    _check_rate_limit(request)
     if not req.message.strip():
         raise HTTPException(400, "message empty")
     try:
@@ -500,18 +521,19 @@ async def routed_chat_page():
 
 
 @app.post("/routed-chat")
-async def routed_chat(req: RoutedChatRequest):
+async def routed_chat(req: RoutedChatRequest, request: Request):
     """Cedar decision mesh routing. Context → Policy evaluation → ModelPool → model."""
+    _check_rate_limit(request)
     if not req.message.strip():
         raise HTTPException(400, "message empty")
 
     # Build context for Cedar routing policies
     context = {
         "action_type": req.action,
-        "task_complexity": getattr(req, "task_complexity", 5),
-        "drift_tolerance": getattr(req, "drift_tolerance", 0.10),
-        "priority": getattr(req, "priority", "interactive"),
-        "locale": getattr(req, "locale", "en"),
+        "task_complexity": req.task_complexity,
+        "drift_tolerance": req.drift_tolerance,
+        "priority": req.priority,
+        "locale": req.locale,
     }
 
     # Cedar-driven routing
@@ -548,16 +570,19 @@ async def routed_chat(req: RoutedChatRequest):
     }
 
 
-@app.get("/ledger")
-async def ledger(limit: int = 20):
+def _ledger_response(limit: int) -> dict:
     entries = _load_entries(limit)
     return {"count": len(entries), "entries": list(reversed(entries))}
+
+
+@app.get("/ledger")
+async def ledger(limit: int = 20):
+    return _ledger_response(limit)
 
 
 @app.get("/routed-chat/ledger")
 async def routed_chat_ledger(limit: int = 20):
-    entries = _load_entries(limit)
-    return {"count": len(entries), "entries": list(reversed(entries))}
+    return _ledger_response(limit)
 
 
 @app.get("/health")
@@ -569,12 +594,15 @@ async def health():
             "label": cfg["label"],
             "key_configured": bool(key),
         }
-    entries = _load_entries(999)
+    total = 0
+    if LEDGER_FILE.exists():
+        with open(LEDGER_FILE) as f:
+            total = sum(1 for line in f if line.strip())
     return {
         "status": "ok",
         "time": time.time(),
         "models": model_status,
-        "total_prompts": len(entries),
+        "total_prompts": total,
     }
 
 
