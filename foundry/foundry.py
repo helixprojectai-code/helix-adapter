@@ -247,7 +247,7 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
 <div class="nav">
   <a href="/routed-chat/" class="active">Routed Chat</a>
   <a href="/audit/">Audit</a>
-  <a href="/foundry">Dashboard</a>
+  <a href="/">Dashboard</a>
 </div>
 
 <h1>&#9877; <span>Helix Foundry</span> &mdash; Cedar Routed Chat</h1>
@@ -614,8 +614,10 @@ class AuditRequest(BaseModel):
 
 
 @app.post("/audit")
-async def audit(req: AuditRequest):
+async def audit(req: AuditRequest, request: Request):
     """Score an arbitrary LLM response through the Helix constitutional lens."""
+    if req.prompt:
+        _check_rate_limit(request)
     from helix_adapter.markers import extract_claims, count_claims, detect_nonstandard_markers, validate_response
     from helix_adapter.drift import compute_drift, estimate_statements
 
@@ -627,13 +629,13 @@ async def audit(req: AuditRequest):
     if prompt:
         try:
             adapter, label = build_adapter("deepseek-4-pro")
-            result = adapter.chat(prompt)
+            baseline_result = adapter.chat(prompt)
             baseline = {
                 "model": label,
-                "response": result.response,
-                "drift": result.drift,
-                "claims": result.claims,
-                "receipt": result.receipt,
+                "response": baseline_result.response,
+                "drift": baseline_result.drift,
+                "claims": baseline_result.claims,
+                "receipt": baseline_result.receipt,
             }
         except Exception as e:
             baseline = {"error": str(e)}
@@ -777,7 +779,7 @@ AUDIT_HTML = """<!DOCTYPE html>
 <div class="nav">
   <a href="/routed-chat/">Routed Chat</a>
   <a href="/audit/" class="active">Audit</a>
-  <a href="/foundry">Dashboard</a>
+  <a href="/">Dashboard</a>
 </div>
 
 <h1>&#9877; <span>Helix Foundry</span> &mdash; Constitutional Audit</h1>
@@ -1022,7 +1024,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <div class="nav">
   <a href="/routed-chat/">Routed Chat</a>
   <a href="/audit/">Audit</a>
-  <a href="/foundry" class="active">Dashboard</a>
+  <a href="/" class="active">Dashboard</a>
 </div>
 <h1>&#9877; <span>Helix Foundry</span></h1>
 <p class="subtitle">Shared inference pool for Helix nodes. Azure-hosted, adapter-wrapped.</p>
@@ -1041,7 +1043,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 @app.get("/", response_class=HTMLResponse)
 @app.head("/")
 async def dashboard():
-    entries = _load_entries(20)
+    entries = _load_entries(500)
     model_counts = {}
     for e in entries:
         m = e.get("label", "?")
