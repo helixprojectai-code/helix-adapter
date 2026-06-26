@@ -23,3 +23,16 @@ __all__ = [
     "HELIX_SCHEMA",
     "generate_schema_from_tools",
 ]
+
+
+def _load_policy_set(self, policy_text: str):
+    """Load policies using Cedar's native loader (clean & robust)."""
+    if not policy_text or not policy_text.strip():
+        return None, "Policy file is empty"
+
+    try:
+        from cedar import PolicySet
+        policy_set = PolicySet.from_str(policy_text)
+        return policy_set, None
+    except Exception as e:
+        return None, f"Failed to parse policy file: {e}"
