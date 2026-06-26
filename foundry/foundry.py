@@ -73,6 +73,10 @@ def cedar_route(context: dict) -> dict:
             schema_file=HERE / "routing.schema",
         )
 
+        # If Cedar failed to load (no native lib), fall through to static routing
+        if policy._validation_error and "not installed" in str(policy._validation_error):
+            raise ImportError(str(policy._validation_error))
+
         for pool in MODEL_POOLS:
             decision = policy.evaluate(
                 principal='Helix::Agent::"foundry"',
@@ -88,14 +92,16 @@ def cedar_route(context: dict) -> dict:
                     "reason": decision.reason,
                 }
 
-        # Fallback — should never hit if fallback policy exists
-        return {"model": "deepseek-4-pro", "pool": "fallback", "policy_hash": "", "reason": "no policy matched"}
+        # No policy matched — fall back to static routing
+        action = context.get("action_type", "default")
+        model = ACTION_MODEL_MAP.get(action, "deepseek-4-pro")
+        return {"model": model, "pool": "static", "policy_hash": "", "reason": "no Cedar policy matched — using static map"}
 
     except ImportError:
         # Cedar not installed — fall back to static routing
         action = context.get("action_type", "default")
         model = ACTION_MODEL_MAP.get(action, "deepseek-4-pro")
-        return {"model": model, "pool": "static", "policy_hash": "", "reason": "cedar_python unavailable"}
+        return {"model": model, "pool": "static", "policy_hash": "", "reason": "cedar_python unavailable — using static map"}
 
 
 # Legacy static map — used when Cedar is unavailable
@@ -240,7 +246,7 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
 
 <h1>&#9877; <span>Helix Foundry</span> &mdash; Cedar Routed Chat</h1>
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-<p class="subtitle" style="margin-bottom:0;">Cedar Decision Mesh evaluates context &rarr; selects ModelPool &rarr; routes to optimal model. Microsecond evaluation via native Rust bindings. Every response drift-scored, receipt-sealed.</p>
+<p class="subtitle" style="margin-bottom:0;">Action-context routing: your action determines which model handles the query. Cedar Decision Mesh available with native library install — static action→model map as zero-latency fallback. Every response drift-scored, receipt-sealed.</p>
 <div style="flex:1;"></div>
 <select id="exportSelector" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;max-width:200px;">
   <option value="all">All entries</option>
