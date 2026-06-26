@@ -57,19 +57,34 @@ def _load_key() -> str:
     return os.environ.get("DEEPSEEK_API_KEY", "")
 
 
-client = OpenAI(api_key=_load_key(), base_url="https://api.deepseek.com/v1")
-
-adapter = HelixAdapter(
-    model_fn=lambda msgs: client.chat.completions.create(
-        model="deepseek-chat",
-        messages=msgs,
-        temperature=0.7,
-        max_tokens=4096,
+# Default adapter — Azure Foundry (DeepSeek 4 Pro)
+foundry_key = _load_provider_key("AZURE_OPENAI_FOUNDRY_KEY") or os.environ.get("AZURE_OPENAI_FOUNDRY_KEY","")
+if foundry_key:
+    foundry_client = OpenAI(api_key=foundry_key, base_url="https://helix-nodes-resource.openai.azure.com/openai/v1")
+    adapter = HelixAdapter(
+        model_fn=lambda msgs: foundry_client.chat.completions.create(
+            model="DeepSeek-V4-Pro",
+            messages=msgs,
+            temperature=0.7,
+            max_completion_tokens=4096,
+        )
+        .choices[0]
+        .message.content,
+        model_name="deepseek-4-pro (Azure)",
     )
-    .choices[0]
-    .message.content,
-    model_name="deepseek-chat",
-)
+else:
+    client = OpenAI(api_key=_load_key(), base_url="https://api.deepseek.com/v1")
+    adapter = HelixAdapter(
+        model_fn=lambda msgs: client.chat.completions.create(
+            model="deepseek-chat",
+            messages=msgs,
+            temperature=0.7,
+            max_tokens=4096,
+        )
+        .choices[0]
+        .message.content,
+        model_name="deepseek-chat",
+    )
 
 # Bypass key for sp:none on compare endpoint — unset = disabled
 COMPARE_BYPASS_KEY = os.environ.get("HELIX_COMPARE_BYPASS_KEY", "")
