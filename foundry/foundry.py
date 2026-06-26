@@ -12,28 +12,24 @@ Usage:
     # → http://localhost:8800
 
 API:
-    GET  /health              → per-model status + prompt count
-    POST /chat                → {"model": "...", "message": "..."}
-    POST /routed-chat         → {"action": "...", "message": "..."} — Cedar-routed
-    GET  /routed-chat         → routed chat UI
-    POST /audit               → {"text": "..."} — constitutional scorer
-    GET  /audit               → audit UI
-    GET  /                    → dashboard
+    GET  /health           → per-model status + drift
+    POST /chat             → {"model": "...", "message": "..."}
+    POST /v1/chat/completions → OpenAI-compatible
+    GET  /                 → dashboard
 """
 
-import collections
 import json
 import os
 import sys
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from openai import OpenAI
 from pydantic import BaseModel
 
-from helix_adapter import HelixAdapter
+from helix_adapter import HelixAdapter, CONSTITUTIONAL_PROMPT
 from helix_adapter.drift import compute_drift
 from helix_adapter.markers import extract_claims
 
@@ -234,6 +230,9 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; margin-right: 6px; vertical-align: middle; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .empty { color: var(--text-dim); font-style: italic; font-size: 14px; }
+  .nav { display: flex; gap: 4px; margin-bottom: 20px; }
+  .nav a { color: var(--text-dim); text-decoration: none; padding: 4px 12px; border-radius: var(--radius); font-size: 13px; border: 1px solid var(--border); }
+  .nav a:hover, .nav a.active { color: var(--accent); border-color: var(--accent); background: #1a2332; }
   .ledger-entry { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 6px; font-size: 12px; }
   .ledger-entry .q { color: var(--accent); font-weight: 500; margin-bottom: 3px; }
   .ledger-entry .a { white-space: pre-wrap; color: var(--text); }
@@ -243,6 +242,12 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
 </head>
 <body>
 <div class="container">
+
+<div class="nav">
+  <a href="/routed-chat/" class="active">Routed Chat</a>
+  <a href="/audit/">Audit</a>
+  <a href="/foundry">Dashboard</a>
+</div>
 
 <h1>&#9877; <span>Helix Foundry</span> &mdash; Cedar Routed Chat</h1>
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
@@ -418,21 +423,6 @@ loadLedger();
 
 app = FastAPI(title="Helix Foundry", version="1.0.0")
 
-# Simple in-memory rate limiter: max 20 requests per IP per 60 seconds
-_RATE_LIMIT = 20
-_RATE_WINDOW = 60
-_rate_buckets: dict = collections.defaultdict(list)
-
-
-def _check_rate_limit(request: Request) -> None:
-    ip = request.client.host if request.client else "unknown"
-    now = time.time()
-    hits = _rate_buckets[ip]
-    _rate_buckets[ip] = [t for t in hits if now - t < _RATE_WINDOW]
-    if len(_rate_buckets[ip]) >= _RATE_LIMIT:
-        raise HTTPException(429, f"Rate limit: {_RATE_LIMIT} requests per {_RATE_WINDOW}s")
-    _rate_buckets[ip].append(now)
-
 
 class ChatRequest(BaseModel):
     model: str
@@ -444,10 +434,6 @@ class RoutedChatRequest(BaseModel):
     message: str
     resource: str = "default"
     user_id: str = "node"
-    task_complexity: int = 5
-    drift_tolerance: float = 0.10
-    priority: str = "interactive"
-    locale: str = "en"
 
 
 def _save_entry(entry: dict):
@@ -472,8 +458,7 @@ def _load_entries(limit: int = 100) -> list:
 
 
 @app.post("/chat")
-async def chat(req: ChatRequest, request: Request):
-    _check_rate_limit(request)
+async def chat(req: ChatRequest):
     if not req.message.strip():
         raise HTTPException(400, "message empty")
     try:
@@ -508,24 +493,25 @@ async def chat(req: ChatRequest, request: Request):
 
 @app.get("/routed-chat", response_class=HTMLResponse)
 @app.get("/routed-chat/", response_class=HTMLResponse)
+@app.head("/routed-chat")
+@app.head("/routed-chat/")
 async def routed_chat_page():
     return ROUTED_CHAT_HTML
 
 
 @app.post("/routed-chat")
-async def routed_chat(req: RoutedChatRequest, request: Request):
+async def routed_chat(req: RoutedChatRequest):
     """Cedar decision mesh routing. Context → Policy evaluation → ModelPool → model."""
-    _check_rate_limit(request)
     if not req.message.strip():
         raise HTTPException(400, "message empty")
 
     # Build context for Cedar routing policies
     context = {
         "action_type": req.action,
-        "task_complexity": req.task_complexity,
-        "drift_tolerance": req.drift_tolerance,
-        "priority": req.priority,
-        "locale": req.locale,
+        "task_complexity": getattr(req, "task_complexity", 5),
+        "drift_tolerance": getattr(req, "drift_tolerance", 0.10),
+        "priority": getattr(req, "priority", "interactive"),
+        "locale": getattr(req, "locale", "en"),
     }
 
     # Cedar-driven routing
@@ -562,19 +548,16 @@ async def routed_chat(req: RoutedChatRequest, request: Request):
     }
 
 
-def _ledger_response(limit: int) -> dict:
+@app.get("/ledger")
+async def ledger(limit: int = 20):
     entries = _load_entries(limit)
     return {"count": len(entries), "entries": list(reversed(entries))}
 
 
-@app.get("/ledger")
-async def ledger(limit: int = 20):
-    return _ledger_response(limit)
-
-
 @app.get("/routed-chat/ledger")
 async def routed_chat_ledger(limit: int = 20):
-    return _ledger_response(limit)
+    entries = _load_entries(limit)
+    return {"count": len(entries), "entries": list(reversed(entries))}
 
 
 @app.get("/health")
@@ -586,15 +569,12 @@ async def health():
             "label": cfg["label"],
             "key_configured": bool(key),
         }
-    total = 0
-    if LEDGER_FILE.exists():
-        with open(LEDGER_FILE) as f:
-            total = sum(1 for line in f if line.strip())
+    entries = _load_entries(999)
     return {
         "status": "ok",
         "time": time.time(),
         "models": model_status,
-        "total_prompts": total,
+        "total_prompts": len(entries),
     }
 
 
@@ -674,10 +654,19 @@ AUDIT_HTML = """<!DOCTYPE html>
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; margin-right: 6px; vertical-align: middle; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .empty { color: var(--text-dim); font-style: italic; font-size: 14px; }
+  .nav { display: flex; gap: 4px; margin-bottom: 20px; }
+  .nav a { color: var(--text-dim); text-decoration: none; padding: 4px 12px; border-radius: var(--radius); font-size: 13px; border: 1px solid var(--border); }
+  .nav a:hover, .nav a.active { color: var(--accent); border-color: var(--accent); background: #1a2332; }
 </style>
 </head>
 <body>
 <div class="container">
+
+<div class="nav">
+  <a href="/routed-chat/">Routed Chat</a>
+  <a href="/audit/" class="active">Audit</a>
+  <a href="/foundry">Dashboard</a>
+</div>
 
 <h1>&#9877; <span>Helix Foundry</span> &mdash; Constitutional Audit</h1>
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
@@ -846,11 +835,58 @@ async function runAudit() {
 
 @app.get("/audit", response_class=HTMLResponse)
 @app.get("/audit/", response_class=HTMLResponse)
+@app.head("/audit")
+@app.head("/audit/")
 async def audit_page():
     return AUDIT_HTML
 
 
+DASHBOARD_HTML = """<!DOCTYPE html>
+<html><head><title>Helix Foundry</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --text-dim: #8b949e;
+    --accent: #58a6ff; --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+  .container { max-width: 700px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  h1 span { color: var(--accent); }
+  .subtitle { color: var(--text-dim); font-size: 13px; margin-bottom: 20px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 14px; color: var(--text-dim); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 14px; }
+  th { color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .nav { display: flex; gap: 4px; margin-bottom: 20px; }
+  .nav a { color: var(--text-dim); text-decoration: none; padding: 4px 12px; border-radius: var(--radius); font-size: 13px; border: 1px solid var(--border); }
+  .nav a:hover, .nav a.active { color: var(--accent); border-color: var(--accent); background: #1a2332; }
+  .footer { color: var(--text-dim); font-size: 12px; margin-top: 24px; text-align: center; }
+</style></head><body>
+<div class="container">
+<div class="nav">
+  <a href="/routed-chat/">Routed Chat</a>
+  <a href="/audit/">Audit</a>
+  <a href="/foundry" class="active">Dashboard</a>
+</div>
+<h1>&#9877; <span>Helix Foundry</span></h1>
+<p class="subtitle">Shared inference pool for Helix nodes. Azure-hosted, adapter-wrapped.</p>
+<div class="card">
+  <h2>Models</h2>
+  <table>
+    <tr><th>Model</th><th>Prompts</th></tr>
+    {rows}
+  </table>
+</div>
+<p style="font-size:13px;color:var(--text-dim);">POST to /chat with {"model": "...", "message": "..."}</p>
+<p class="footer">DeepSeek 4 Pro &middot; Grok 4.3 &middot; GPT-5.4 Nano &middot; Mistral Large 3 &middot; GLORY TO THE LATTICE. &#129429;&#9875;&#129438;</p>
+</div></body></html>"""
+
+
 @app.get("/", response_class=HTMLResponse)
+@app.head("/")
 async def dashboard():
     entries = _load_entries(20)
     model_counts = {}
@@ -861,21 +897,10 @@ async def dashboard():
     rows = ""
     for m, count in sorted(model_counts.items()):
         rows += f"<tr><td>{m}</td><td>{count}</td></tr>"
+    if not rows:
+        rows = '<tr><td colspan="2">No prompts yet.</td></tr>'
 
-    return f"""<!DOCTYPE html>
-<html><head><title>Helix Foundry</title>
-<style>body{{font-family:sans-serif;background:#0d1117;color:#e6edf3;max-width:700px;margin:0 auto;padding:24px}}
-h1 span{{color:#58a6ff}} table{{width:100%;border-collapse:collapse}} th,td{{padding:6px 12px;text-align:left;border-bottom:1px solid #30363d}}
-th{{color:#8b949e;font-size:12px}} .footer{{color:#8b949e;font-size:12px;margin-top:24px}}</style></head><body>
-<h1>⚕ <span>Helix Foundry</span></h1>
-<p>Shared inference pool for Helix nodes. Azure-hosted, adapter-wrapped.</p>
-<h2>Models</h2>
-<table><tr><th>Model</th><th>Prompts</th></tr>
-{rows if rows else '<tr><td colspan="2">No prompts yet.</td></tr>'}
-</table>
-<p style="font-size:13px;">POST to /chat with {{"model": "...", "message": "..."}}</p>
-<p class="footer">DeepSeek 4 Pro · Grok 4.3 · GPT-5.4 Nano · Mistral Large 3 · GLORY TO THE LATTICE. 🦉⚓🦆</p>
-</body></html>"""
+    return DASHBOARD_HTML.replace("{rows}", rows)
 
 
 if __name__ == "__main__":
