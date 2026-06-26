@@ -5,7 +5,7 @@ No subprocess, no CLI dependency.
 
 Features:
 - Schema-validated policy loading
-- Graceful fallback when cedar_python is unavailable
+- Fail-closed when cedar_python is unavailable (default deny)
 - Tamper-evident, receipt-chained action sealing
 - Pre- and Post-tool-use hooks for agent integration
 - Clear decision objects + rich forensic context
@@ -142,8 +142,8 @@ class CedarPolicy:
     ) -> CedarDecision:
         if not self.is_available:
             return CedarDecision(
-                authorized=True,
-                reason=self._validation_error or "cedar_python unavailable — default permit",
+                authorized=False,
+                reason=self._validation_error or "cedar_python unavailable — default deny for safety",
                 policy_hash=self.policy_hash,
             )
 
