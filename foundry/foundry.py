@@ -582,32 +582,116 @@ async def health():
 
 class AuditRequest(BaseModel):
     text: str
+    prompt: str = ""  # original prompt — if provided, runs through Helix adapter for baseline comparison
 
 
 @app.post("/audit")
 async def audit(req: AuditRequest):
     """Score an arbitrary LLM response through the Helix constitutional lens."""
     from helix_adapter.markers import extract_claims, count_claims, detect_nonstandard_markers, validate_response
-    from helix_adapter.drift import compute_drift
+    from helix_adapter.drift import compute_drift, estimate_statements
 
     text = req.text
+    prompt = req.prompt.strip() if req.prompt else ""
+    
+    # If prompt provided, run through Helix adapter for baseline comparison
+    baseline = None
+    if prompt:
+        try:
+            adapter, label = build_adapter("deepseek-4-pro")
+            result = adapter.chat(prompt)
+            baseline = {
+                "model": label,
+                "response": result.response,
+                "drift": result.drift,
+                "claims": result.claims,
+                "receipt": result.receipt,
+            }
+        except Exception as e:
+            baseline = {"error": str(e)}
+
     claims = extract_claims(text)
     counts = count_claims(text)
     nonstandard = detect_nonstandard_markers(text)
     validation = validate_response(text)
     drift = compute_drift(text, claims)
+    statements = estimate_statements(text)
+    char_count = len(text)
+    marker_count = validation["marker_count"]
+    coverage = round(marker_count / max(statements, 1), 3)
+    density = round(marker_count / max(char_count, 1) * 100, 2)  # markers per 100 chars
 
-    return {
+    # Which epistemic categories are present vs missing
+    all_categories = ["FACT", "REASONED", "HYPOTHESIS", "UNCERTAIN", "CONCLUSION"]
+    present = [c for c in all_categories if counts.get(c, 0) > 0]
+    missing = [c for c in all_categories if counts.get(c, 0) == 0]
+
+    # Drift tier
+    if drift < 0.10:
+        tier = "green"
+        tier_label = "healthy — well-labeled response"
+    elif drift < 0.20:
+        tier = "yellow"
+        tier_label = "warming — some unlabeled claims"
+    elif drift < 0.50:
+        tier = "orange"
+        tier_label = "concerning — significant unlabeled content"
+    else:
+        tier = "red"
+        tier_label = "critical — response is largely or entirely unlabeled"
+
+    result = {
         "compliant": validation["compliant"],
         "drift": drift,
-        "marker_count": validation["marker_count"],
+        "drift_tier": tier,
+        "drift_tier_label": tier_label,
+        "marker_count": marker_count,
+        "marker_density_pct": density,
+        "coverage_ratio": coverage,
+        "statements_estimated": statements,
         "nonstandard_count": validation["nonstandard_count"],
         "marker_distribution": counts,
+        "categories_present": present,
+        "categories_missing": missing,
         "nonstandard_instances": nonstandard[:10],
         "issues": validation["issues"],
         "claims": claims,
-        "char_count": len(text),
+        "char_count": char_count,
     }
+
+    if baseline:
+        # Score the baseline too
+        b_claims = extract_claims(baseline.get("response", ""))
+        b_counts = count_claims(baseline.get("response", ""))
+        b_drift = baseline.get("drift", compute_drift(baseline.get("response", ""), b_claims))
+        b_validation = validate_response(baseline.get("response", ""))
+
+        result["baseline"] = {
+            **baseline,
+            "compliant": b_validation["compliant"],
+            "marker_count": b_validation["marker_count"],
+            "marker_distribution": b_counts,
+            "drift": b_drift,
+        }
+
+        # Diff
+        result["diff"] = {
+            "drift_delta": round(drift - b_drift, 4),
+            "marker_delta": marker_count - b_validation["marker_count"],
+            "submitted_drift": drift,
+            "baseline_drift": b_drift,
+            "submitted_markers": marker_count,
+            "baseline_markers": b_validation["marker_count"],
+            "submitted_compliant": validation["compliant"],
+            "baseline_compliant": b_validation["compliant"],
+            "summary": (
+                f"Baseline (Helix): γ={b_drift:.3f}, {b_validation['marker_count']} markers, {'compliant' if b_validation['compliant'] else 'non-compliant'}. "
+                f"Submitted: γ={drift:.3f}, {marker_count} markers, {'compliant' if validation['compliant'] else 'non-compliant'}. "
+                f"Delta: Δγ={drift - b_drift:+.4f}, Δmarkers={marker_count - b_validation['marker_count']:+d}."
+            ),
+        }
+
+    return result
 
 
 AUDIT_HTML = """<!DOCTYPE html>
@@ -681,6 +765,7 @@ AUDIT_HTML = """<!DOCTYPE html>
 <div class="card">
   <h2>Paste LLM Response</h2>
   <textarea id="auditInput" placeholder="Paste any LLM response here...&#10;&#10;Example:&#10;[FACT] The speed of light is 299,792,458 m/s.&#10;[REASONED] This value is defined by the meter..."></textarea>
+  <input id="promptInput" type="text" placeholder="Original prompt (optional — runs Helix baseline for comparison)" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;color:var(--text);font-size:13px;outline:none;margin-top:8px;">
   <button id="auditBtn" onclick="runAudit()">Audit</button>
 </div>
 
@@ -698,6 +783,14 @@ AUDIT_HTML = """<!DOCTYPE html>
   <div class="card" id="claimsCard" style="display:none;">
     <h2>Extracted Claims</h2>
     <div id="claimsList"></div>
+  </div>
+  <div class="card" id="baselineCard" style="display:none;">
+    <h2>Helix Baseline</h2>
+    <div id="baselineContent"></div>
+  </div>
+  <div class="card" id="diffCard" style="display:none;">
+    <h2>Diff</h2>
+    <div id="diffContent"></div>
   </div>
   <div class="card" id="nonstandardCard" style="display:none;">
     <h2>Nonstandard Markers</h2>
@@ -762,6 +855,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
 async function runAudit() {
   const text = document.getElementById('auditInput').value.trim();
   if (!text) return;
+  const prompt = document.getElementById('promptInput').value.trim();
   const btn = document.getElementById('auditBtn');
   btn.disabled = true;
   document.getElementById('loading').style.display = 'block';
@@ -770,27 +864,31 @@ async function runAudit() {
     const resp = await fetch('/audit', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({text: text})
+      body: JSON.stringify({text: text, prompt: prompt})
     });
     const d = await resp.json();
 
     // Store in history
     auditHistory.push({text: text.slice(0, 500), ...d, timestamp: new Date().toISOString()});
     updateExportOptions();
+
     const dpct = Math.min(100, (d.drift||0)*100);
     const statusClass = d.compliant ? 'pass' : 'fail';
     const statusText = d.compliant ? 'COMPLIANT' : 'NON-COMPLIANT';
 
     let metrics = '<span class="metric">Status: <span class="val '+statusClass+'">'+statusText+'</span></span>';
-    metrics += '<span class="metric"><span class="drift-bar">drift <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+driftColor(d.drift||0)+';"></span></span> &gamma; '+(d.drift||0).toFixed(3)+'</span></span>';
-    metrics += '<span class="metric">Markers: <span class="val">'+d.marker_count+'</span></span>';
+    metrics += '<span class="metric"><span class="drift-bar">drift <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+driftColor(d.drift||0)+';"></span></span> &gamma; '+(d.drift||0).toFixed(3)+' <span style="font-size:10px;color:'+driftColor(d.drift||0)+'">'+d.drift_tier+'</span></span></span>';
+    metrics += '<span class="metric">'+d.drift_tier_label+'</span>';
+    metrics += '<span class="metric">Markers: <span class="val">'+d.marker_count+'</span> / '+d.statements_estimated+' statements</span>';
+    metrics += '<span class="metric">Coverage: <span class="val">'+(d.coverage_ratio*100).toFixed(0)+'%</span></span>';
+    metrics += '<span class="metric">Density: <span class="val">'+d.marker_density_pct+'</span>/100ch</span>';
     metrics += '<span class="metric">Chars: <span class="val">'+d.char_count+'</span></span>';
 
-    // Marker distribution
+    // Marker distribution — stacked with counts
     if (d.marker_distribution && Object.keys(d.marker_distribution).length) {
       metrics += '<span class="metric">';
       for (const [label, count] of Object.entries(d.marker_distribution)) {
-        metrics += '<span class="pill pill-'+tagClass(label)+'">'+label+' x'+count+'</span> ';
+        metrics += '<span class="pill pill-'+tagClass(label)+'">'+label+' &times;'+count+'</span> ';
       }
       metrics += '</span>';
     }
@@ -811,6 +909,33 @@ async function runAudit() {
       document.getElementById('claimsList').innerHTML = d.claims.map(c => '<div class="claim-row"><span class="pill pill-'+tagClass(c.label)+'">'+c.label+'</span> '+c.text+'</div>').join('');
     } else {
       document.getElementById('claimsCard').style.display = 'none';
+    }
+
+    // Baseline
+    if (d.baseline) {
+      document.getElementById('baselineCard').style.display = 'block';
+      const b = d.baseline;
+      const bdpct = Math.min(100, (b.drift||0)*100);
+      document.getElementById('baselineContent').innerHTML =
+        '<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;">Model: <strong>'+b.model+'</strong> | Compliant: <strong style="color:'+(b.compliant?'var(--fact)':'var(--uncertain)')+';">'+(b.compliant?'YES':'NO')+'</strong> | Drift: <span style="color:'+driftColor(b.drift||0)+';">γ '+(b.drift||0).toFixed(3)+'</span> | Markers: '+b.marker_count+'</div>' +
+        '<div class="response-body" style="font-size:13px;max-height:300px;overflow-y:auto;">'+(b.response||'')+'</div>' +
+        '<div class="meta-row">'+(b.claims||[]).map(c => '<span class="pill pill-'+tagClass(c.label)+'">'+c.label+'</span>').join(' ')+'</div>';
+    } else {
+      document.getElementById('baselineCard').style.display = 'none';
+    }
+
+    // Diff
+    if (d.diff) {
+      document.getElementById('diffCard').style.display = 'block';
+      document.getElementById('diffContent').innerHTML =
+        '<div style="font-size:14px;margin-bottom:8px;">'+d.diff.summary+'</div>' +
+        '<div style="display:flex;gap:16px;font-size:13px;">' +
+        '<div style="flex:1;background:var(--bg);padding:8px 12px;border-radius:var(--radius);">Helix γ='+d.diff.baseline_drift.toFixed(3)+' | '+d.diff.baseline_markers+' markers</div>' +
+        '<div style="flex:1;background:var(--bg);padding:8px 12px;border-radius:var(--radius);">Submitted γ='+d.diff.submitted_drift.toFixed(3)+' | '+d.diff.submitted_markers+' markers</div>' +
+        '<div style="flex:1;background:var(--bg);padding:8px 12px;border-radius:var(--radius);">Δγ='+(d.diff.drift_delta>0?'+':'')+d.diff.drift_delta.toFixed(4)+' | Δm='+(d.diff.marker_delta>0?'+':'')+d.diff.marker_delta+'</div>' +
+        '</div>';
+    } else {
+      document.getElementById('diffCard').style.display = 'none';
     }
 
     // Nonstandard
