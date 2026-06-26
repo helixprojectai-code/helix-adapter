@@ -1,20 +1,19 @@
 // Helix Foundry Routing Schema
+// Defines the entity model and action context for routing policies.
+// All context fields are optional — policies guard with `context has X`.
 namespace Helix {
-    entity Agent in [Principal];
-    entity ModelPool in [Resource];
-    entity Environment in [Resource];
+    entity Agent;
+    entity ModelPool;
 
-    action infer {
-        appliesTo {
-            principal: [Agent],
-            resource: [ModelPool],
-        };
+    action "infer" appliesTo {
+        principal: [Agent],
+        resource: [ModelPool],
         context: {
-            task_complexity: Long,
-            drift_tolerance: Decimal,
-            priority: String,
-            action_type: String,
-            locale: String,
-        };
+            task_complexity?: Long,
+            drift_tolerance?: decimal,
+            priority?: String,
+            action_type?: String,
+            locale?: String,
+        }
     };
 }
