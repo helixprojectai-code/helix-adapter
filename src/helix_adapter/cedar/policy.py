@@ -144,6 +144,13 @@ class CedarPolicy:
             self._validation_error = msg
             return
 
+        if ps.is_empty():
+            msg = "Policy file contains no permit/forbid statements"
+            if self.strict:
+                raise ValueError(msg)
+            self._validation_error = msg
+            return
+
         self._policy_set = ps
 
         # Schema validation — optional but catches type errors at load time

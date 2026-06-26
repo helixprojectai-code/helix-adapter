@@ -21,6 +21,17 @@ when {
 
 // --- Action Gate (Cedar Gate) ---
 
+// Block path traversal attempts on any action that accepts a path
+forbid(
+    principal is Helix::Agent,
+    action,
+    resource
+)
+when {
+    context has path &&
+    context.path like "*../*"
+};
+
 // Block bash outside sandbox; block wallet_transfer entirely
 forbid(
     principal is Helix::Agent,
