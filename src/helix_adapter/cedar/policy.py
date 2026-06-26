@@ -146,6 +146,26 @@ class CedarPolicy:
 
         self._policy_set = ps
 
+        # Schema validation — optional but catches type errors at load time
+        if self.schema_text:
+            try:
+                from cedar import Schema
+                schema = Schema.from_cedarschema(self.schema_text)
+                result = schema.validate_policyset(self._policy_set)
+                if not result.valid:
+                    msg = f"Schema validation failed: {[str(e) for e in result.errors]}"
+                    if self.strict:
+                        raise ValueError(msg)
+                    self._validation_error = msg
+                    self._policy_set = None
+            except ImportError:
+                pass
+            except Exception as e:
+                msg = f"Schema validation error: {e}"
+                if self.strict:
+                    raise
+                self._validation_error = msg
+
     @property
     def is_available(self) -> bool:
         return self._policy_set is not None
