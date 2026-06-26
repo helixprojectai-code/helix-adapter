@@ -1,11 +1,11 @@
 """Cedar Policy Evaluation for Helix Dual-Gate Architecture (RFC 0003)
 
-Uses native cedar_python bindings for deterministic policy evaluation.
+Uses native cedar Python bindings for deterministic policy evaluation.
 No subprocess, no CLI dependency.
 
 Features:
 - Schema-validated policy loading
-- Fail-closed when cedar_python is unavailable (default deny)
+- Fail-closed when cedar is unavailable (default deny)
 - Tamper-evident, receipt-chained action sealing
 - Pre- and Post-tool-use hooks for agent integration
 - Clear decision objects + rich forensic context
@@ -15,13 +15,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
 HERE = Path(__file__).parent
-DEFAULT_POLICY = HERE / "policies" / "helix.cedar"
+DEFAULT_POLICY = HERE / "policies" / "helix.policy"
 DEFAULT_SCHEMA = HERE / "policies" / "helix.schema"
 
 
@@ -56,8 +57,36 @@ class ActionReceipt:
 # Core Cedar Policy Engine
 # =============================================================================
 
+def _parse_uid(s: str):
+    """Parse a Cedar entity UID string like 'Helix::Agent::"agent-123"' into an EntityUid."""
+    from cedar import EntityUid
+    m = re.match(r'^(.*)::"([^"]*)"$', s)
+    if m:
+        return EntityUid.from_json(json.dumps({"type": m.group(1), "id": m.group(2)}))
+    raise ValueError(f"Cannot parse entity UID: {s!r}. Expected format: 'Type::\"id\"'")
+
+
+def _load_policies(policy_text: str):
+    """Split a multi-policy Cedar file and return a populated PolicySet."""
+    from cedar import Policy, PolicySet
+
+    ps = PolicySet()
+    raw_blocks = re.split(r"(?=(?:permit|forbid)\s*\()", policy_text)
+    raw_blocks = [
+        b.strip() for b in raw_blocks
+        if b.strip() and (b.strip().startswith("permit") or b.strip().startswith("forbid"))
+    ]
+    errors = []
+    for i, raw in enumerate(raw_blocks):
+        try:
+            ps.add(Policy.from_str(raw, id=f"p{i}"))
+        except Exception as e:
+            errors.append(f"p{i}: {e}")
+    return ps, errors
+
+
 class CedarPolicy:
-    """Cedar policy gate using native cedar_python bindings.
+    """Cedar policy gate using native cedar Python bindings.
 
     Example:
         policy = CedarPolicy()
@@ -85,7 +114,6 @@ class CedarPolicy:
         self.policy_hash = self._hash_text(self.policy_text) if self.policy_text else "no_policy"
 
         self._policy_set = None
-        self._evaluator = None
         self._validation_error: Optional[str] = None
         self.strict = strict
 
@@ -99,35 +127,28 @@ class CedarPolicy:
 
     def _try_load_cedar(self) -> None:
         try:
-            from cedar_python import Evaluator, PolicySet, Schema
-
-            if not self.policy_text:
-                self._validation_error = "No policy text found"
-                return
-
-            self._policy_set = PolicySet.from_str(self.policy_text)
-
-            if self.schema_text:
-                try:
-                    schema = Schema.from_str(self.schema_text)
-                    self._policy_set.validate(schema)
-                except Exception as e:
-                    self._validation_error = f"Schema validation failed: {e}"
-                    if self.strict:
-                        raise
-
-            self._evaluator = Evaluator(self._policy_set)
-
+            import cedar  # noqa: F401
         except ImportError:
-            self._validation_error = "cedar_python not installed — running in fallback mode"
-        except Exception as e:
-            self._validation_error = f"Failed to initialize Cedar: {e}"
+            self._validation_error = "cedar not installed — running in fallback mode (pip install cedar-python)"
+            return
+
+        if not self.policy_text:
+            self._validation_error = "No policy text found"
+            return
+
+        ps, errors = _load_policies(self.policy_text)
+        if errors:
+            msg = f"Policy load errors: {errors}"
             if self.strict:
-                raise
+                raise ValueError(msg)
+            self._validation_error = msg
+            return
+
+        self._policy_set = ps
 
     @property
     def is_available(self) -> bool:
-        return self._evaluator is not None
+        return self._policy_set is not None
 
     @property
     def validation_error(self) -> Optional[str]:
@@ -143,23 +164,53 @@ class CedarPolicy:
         if not self.is_available:
             return CedarDecision(
                 authorized=False,
-                reason=self._validation_error or "cedar_python unavailable — default deny for safety",
+                reason=self._validation_error or "cedar unavailable — default deny for safety",
                 policy_hash=self.policy_hash,
             )
 
         try:
-            from cedar_python import Context, Entity
+            from cedar import Authorizer, Context, Entity, Request
 
-            result = self._evaluator.evaluate(
-                principal=Entity.principal(principal),
-                action=Entity.action(action),
-                resource=Entity.resource(resource),
-                context=Context(context or {}),
+            principal_uid = _parse_uid(principal)
+            action_uid = _parse_uid(action)
+            resource_uid = _parse_uid(resource)
+
+            auth = Authorizer()
+            auth.add_entity(Entity(uid=principal_uid, attrs={}))
+            auth.add_entity(Entity(uid=action_uid, attrs={}))
+            auth.add_entity(Entity(uid=resource_uid, attrs={}))
+
+            # Cedar context values must be JSON-serialisable primitives.
+            # Floats are not natively supported — convert to int*1000 or pass as
+            # strings; the policy uses decimal() extension for float comparisons.
+            ctx_data = {}
+            if context:
+                for k, v in context.items():
+                    if isinstance(v, float):
+                        # Convert float to Cedar decimal string format
+                        ctx_data[k] = {"__extn": {"fn": "decimal", "arg": str(round(v, 4))}}
+                    elif isinstance(v, bool):
+                        ctx_data[k] = v
+                    elif isinstance(v, (int, str)):
+                        ctx_data[k] = v
+                    else:
+                        ctx_data[k] = str(v)
+
+            ctx = Context.from_json(json.dumps(ctx_data))
+            req = Request(
+                principal=principal_uid,
+                action=action_uid,
+                resource=resource_uid,
+                context=ctx,
             )
 
-            authorized = result.is_allowed()
-            reasons = getattr(result, "reasons", [])
-            reason_str = "; ".join(str(r) for r in reasons) if reasons else str(result)
+            result = auth.is_authorized(req, self._policy_set)
+            authorized = result.allowed
+            reasons = result.reason if result.reason else []
+            errors = result.errors if result.errors else []
+            reason_str = "; ".join(str(r) for r in reasons) if reasons else str(result.decision)
+            if errors:
+                reason_str += f" [errors: {'; '.join(str(e) for e in errors)}]"
 
             return CedarDecision(
                 authorized=authorized,
