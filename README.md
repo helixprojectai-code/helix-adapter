@@ -184,28 +184,78 @@ Five-layer defense:
 | **Algorithm** | Drift blind-spot fixed — substantive responses with zero extracted claims correctly report 1.0 drift. |
 | **Access** | Compare endpoint `sp:none` bypass locked behind authorization key. |
 
-## Cedar Policy Gating (v1.3 preview)
+## Cedar Policy Gating (v1.3)
 
-The next layer integrates CNCF Cedar as a declarative policy engine for
-**dual-gate containment** — Duck Gate for response governance, Cedar Gate for
-action governance. A single `.cedar` policy file governs the entire agent
-lifecycle.
+Integrates CNCF Cedar as a declarative policy engine for **dual-gate containment** —
+Duck Gate for response governance, Cedar Gate for action governance.
+A single `.cedar` policy file governs the entire agent lifecycle.
 
 ```python
 from helix_adapter.cedar import CedarPolicy
 
-policy = CedarPolicy()
-ok, reason = policy.evaluate(
+policy = CedarPolicy()  # loads helix.policy + helix.schema, fail-closed
+
+# Response gate — permits only if drift < 0.17, markers present, receipt valid
+decision = policy.evaluate(
+    principal='Helix::Agent::"sentinel-001"',
+    action='Helix_Governance::Action::"respond"',
+    resource='Helix::Environment::"workspace"',
+    context={"drift_score": 0.05, "marker_count": 3, "has_valid_receipt": True},
+)
+print(decision.authorized)  # True
+print(decision.reason)      # "p0"
+print(decision.policy_hash) # "6722b0dfc523c944"
+
+# Action gate — bash blocked outside sandbox
+decision = policy.evaluate(
     principal='Helix::Agent::"sentinel-001"',
     action='Helix::Action::"bash"',
-    resource='Helix::Environment::"/sandbox"',
-    context={"command": "rm -rf /tmp"},
+    resource='Helix::Environment::"workspace"',
+    context={"path": "/home/agent/sandbox/run.sh"},
 )
-# ok == True only if command is within sandbox
+print(decision.authorized)  # True — sandbox path permitted
+
+# Seal an auditable receipt for any authorized action
+receipt = policy.seal_action(
+    exchange_id="exch-001",
+    action='Helix::Action::"bash"',
+    decision=decision,
+    context={"path": "/home/agent/sandbox/run.sh"},
+)
+print(receipt.receipt_hash)  # "sha256:e3b0c44..."
 ```
 
-Four independent AI systems reviewed and approved the architecture.
+Install with Cedar support:
+
+```bash
+pip install "helix-adapter[cedar]"
+```
+
+Four Helix AI nodes reviewed and approved the architecture.
 RFC 0003 details the full specification. Fail-closed: missing policy = default deny.
+
+## Helix Foundry (v1.3)
+
+A Cedar-routed multi-model inference pool. Cedar evaluates request context and
+routes to the optimal model pool — no classifier, no latency.
+
+| Pool | Model | Trigger |
+|------|-------|---------|
+| `high_capability` | DeepSeek 4 Pro | complexity ≥ 8, tight drift tolerance |
+| `adversarial` | Grok 4.3 | bash / execute / api_call / shell |
+| `cost_optimized` | GPT-5.4 Nano | write_file / summarize / batch |
+| `sovereign` | Mistral Large 3 | fr / de / es / it / nl / pt locale |
+
+```bash
+cd foundry
+pip install fastapi uvicorn openai helix-adapter
+python3 foundry.py
+# → http://localhost:8800
+```
+
+Three apps at one endpoint: `GET /routed-chat` (Cedar-routed chat UI),
+`GET /audit` (constitutional scorer — paste any LLM response, get drift + compliance),
+`GET /` (dashboard).
 
 > *"The model suggests. Cedar decides. The receipt proves."*
 
@@ -225,6 +275,10 @@ Works with any model that accepts OpenAI-format messages:
 - Custom endpoints
 
 The constitution travels with you. Swap the model, the rules stay the same.
+
+## Contributors
+
+A number of Helix AI nodes participated in developement lead by Helix2 and Claude.ai.
 
 ---
 
