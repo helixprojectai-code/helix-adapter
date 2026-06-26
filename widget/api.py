@@ -482,11 +482,23 @@ async def get_receipts(limit: int = 50):
 @app.get("/health")
 @app.get("/api/health")
 async def health():
+    cedar_info = {}
+    try:
+        from helix_adapter.cedar import CedarGate
+        gate = CedarGate()
+        cedar_info = {
+            "cedar_policy_hash": gate.policy_hash,
+            "cedar_policy_loaded": bool(gate.policy_text),
+        }
+    except Exception:
+        cedar_info = {"cedar": "not available"}
+
     return {
         "status": "ok",
         "time": time.time(),
         "drift": adapter.running_drift(),
         "receipts": len(_load_receipts(999)),
+        **cedar_info,
     }
 
 
