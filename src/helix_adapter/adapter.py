@@ -21,6 +21,7 @@ Usage (with Cedar action gating):
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
@@ -47,6 +48,7 @@ class ChatResult:
     claims: list[dict]
     receipt: dict
     drift: float
+    cedar_active: bool = False
 
 
 class HelixSecurityViolation(Exception):
@@ -98,9 +100,36 @@ class HelixAdapter:
         self._post_tool_hook = None
         self._tools: dict[str, Callable] = {}
 
-        if self.cedar_policy and PreToolUseHook and PostToolUseHook:
-            self._pre_tool_hook = PreToolUseHook(self.cedar_policy)
-            self._post_tool_hook = PostToolUseHook(self.cedar_policy)
+        if self.cedar_policy:
+            if self.cedar_policy.is_fail_closed:
+                warnings.warn(
+                    f"Cedar policy is configured but FAIL-CLOSED — all tool calls "
+                    f"will be denied until Cedar loads successfully. "
+                    f"Reason: {self.cedar_policy.validation_error}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+            elif PreToolUseHook and PostToolUseHook:
+                self._pre_tool_hook = PreToolUseHook(self.cedar_policy)
+                self._post_tool_hook = PostToolUseHook(self.cedar_policy)
+
+    def _cedar_status(self) -> dict:
+        """Build Cedar status dict for inclusion in exchange receipts."""
+        if self.cedar_policy is None:
+            return {"active": False, "status": "not_configured", "error": None, "policy_hash": None}
+        if self.cedar_policy.is_fail_closed:
+            return {
+                "active": False,
+                "status": "fail_closed",
+                "error": self.cedar_policy.validation_error,
+                "policy_hash": self.cedar_policy.policy_hash,
+            }
+        return {
+            "active": True,
+            "status": "active",
+            "error": None,
+            "policy_hash": self.cedar_policy.policy_hash,
+        }
 
     @property
     def history(self) -> list[dict]:
@@ -120,6 +149,7 @@ class HelixAdapter:
 
         claims = extract_claims(raw_response)
         drift = compute_drift(raw_response, claims, method=self.drift_method)
+        cedar_status = self._cedar_status()
 
         receipt = make_receipt(
             user_message=message,
@@ -130,6 +160,7 @@ class HelixAdapter:
             drift_score=drift,
             drift_method=self.drift_method,
             temperature=temperature,
+            cedar_status=cedar_status,
         )
 
         self._history.append(receipt)
@@ -138,6 +169,7 @@ class HelixAdapter:
             claims=claims,
             receipt=receipt,
             drift=drift,
+            cedar_active=cedar_status["active"],
         )
 
     def running_drift(self) -> float:

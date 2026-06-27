@@ -19,6 +19,7 @@ def make_receipt(
     drift_score: float = 0.0,
     drift_method: str = "char",
     temperature: float | None = None,
+    cedar_status: dict | None = None,
 ) -> dict:
     """Create a tamper-evident receipt for a constitutional exchange.
 
@@ -31,6 +32,7 @@ def make_receipt(
         drift_score: Computed drift for this exchange.
         drift_method: Drift calculation method used.
         temperature: Model temperature used for this exchange.
+        cedar_status: Cedar gate state — active/fail_closed/not_configured.
 
     Returns:
         A dict with all receipt fields and a SHA-256 hash.
@@ -47,6 +49,7 @@ def make_receipt(
         "drift_score": round(drift_score, 4),
         "drift_method": drift_method,
         "temperature": temperature,
+        "cedar": cedar_status or {"active": False, "status": "not_configured", "error": None},
         "hash": "",
     }
     # Self-hash: the receipt seals itself
