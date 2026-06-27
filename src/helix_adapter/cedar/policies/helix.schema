@@ -1,92 +1,87 @@
 // =============================================================================
 // Helix Cedar Schema (RFC 0003)
-// Defines entity types and actions for the dual-gate system
+// Dual-Gate Architecture: Duck Gate (respond) + Cedar Gate (actions)
+//
+// Rules:
+//   - Entity attrs accessed in policies must be present in eval entity store.
+//     Keep bare entity declarations until evaluate() passes real attrs.
+//   - Context fields used in policies must be declared here.
+//   - Optional fields marked with ?.
+//   - Types: String, Long, Bool, decimal (lowercase)
 // =============================================================================
 
 namespace Helix {
 
-    // -------------------------------------------------------------------------
-    // Entity Types
-    // -------------------------------------------------------------------------
-    entity User in [Principal] = {
-        roles: Set<String>,
-        user_id: String,
-    };
+    entity Agent;
+    entity User;
+    entity Environment;
+    entity Tool;
 
-    entity Agent in [Principal] = {
-        user: User,
-        session_id: String,
-        receipt_id: String,
-        model_name: String,
-    };
-
-    entity Tool in [Resource] = {
-        name: String,
-        owner: User,
-    };
-
-    entity Environment in [Resource] = {
-        path: String,
-        owner: User,
-    };
-
-    // -------------------------------------------------------------------------
-    // Core Actions
-    // -------------------------------------------------------------------------
-    action respond {
-        appliesTo {
-            principal: [Agent],
-            resource: [Environment],
-        };
+    action "bash" appliesTo {
+        principal: [Agent],
+        resource: [Environment],
         context: {
-            drift_score: Decimal,
+            command?: String,
+            path?: String
+        }
+    };
+
+    action "write_file" appliesTo {
+        principal: [Agent],
+        resource: [Environment, Tool],
+        context: {
+            path?: String
+        }
+    };
+
+    action "read_file" appliesTo {
+        principal: [Agent],
+        resource: [Environment, Tool],
+        context: {
+            path?: String
+        }
+    };
+
+    action "edit_file" appliesTo {
+        principal: [Agent],
+        resource: [Environment, Tool],
+        context: {
+            path?: String
+        }
+    };
+
+    action "apply_patch" appliesTo {
+        principal: [Agent],
+        resource: [Environment, Tool],
+        context: {
+            path?: String
+        }
+    };
+
+    action "api_call" appliesTo {
+        principal: [Agent],
+        resource: [Tool],
+        context: {
+            endpoint?: String,
+            method?: String
+        }
+    };
+
+    action "wallet_transfer" appliesTo {
+        principal: [Agent],
+        resource: [Tool]
+    };
+}
+
+namespace Helix_Governance {
+
+    action "respond" appliesTo {
+        principal: [Helix::Agent],
+        resource: [Helix::Environment],
+        context: {
+            drift_score: decimal,
             marker_count: Long,
-            has_valid_receipt: Boolean,
-            epistemic_label: String,
-        };
-    };
-
-    action bash {
-        appliesTo {
-            principal: [Agent],
-            resource: [Environment],
-        };
-        context: {
-            command: String,
-            arguments: Set<String>,
-            working_directory: String,
-        };
-    };
-
-    action write_file {
-        appliesTo {
-            principal: [Agent],
-            resource: [Environment],
-        };
-        context: {
-            file_path: String,
-            content_length: Long,
-        };
-    };
-
-    action read_file {
-        appliesTo {
-            principal: [Agent],
-            resource: [Environment],
-        };
-        context: {
-            file_path: String,
-        };
-    };
-
-    action api_call {
-        appliesTo {
-            principal: [Agent],
-            resource: [Tool],
-        };
-        context: {
-            endpoint: String,
-            method: String,
-        };
+            has_valid_receipt: Bool
+        }
     };
 }

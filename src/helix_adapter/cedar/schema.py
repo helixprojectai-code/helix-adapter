@@ -1,9 +1,16 @@
 """Helix Cedar Schema Generation & Definitions (RFC 0003)
 
 Provides:
-- Base HELIX_SCHEMA with proper namespaces and entity/action structure
-- Robust generate_schema_from_tools() helper
-- SchemaBuilder class for advanced / dynamic schema construction
+- HELIX_SCHEMA: base schema for the dual-gate system
+- generate_schema_from_tools(): helper for dynamic tool schemas
+- SchemaBuilder: fluent builder for custom schemas
+
+Cedar schema rules enforced here:
+  - Action names are quoted strings: action "name"
+  - Context block is INSIDE appliesTo: action "x" appliesTo { ..., context: { ... } }
+  - Types: String, Long, Bool, decimal (lowercase — NOT Decimal or Boolean)
+  - Entity hierarchy: entity X in [Y] (Y must be a defined entity type)
+  - Optional context fields: field?: Type
 """
 
 from __future__ import annotations
@@ -19,127 +26,93 @@ from typing import Any, Dict, List, Optional
 HELIX_BASE_SCHEMA = """\
 // =============================================================================
 // Helix Agent Authorization Schema — RFC 0003
-// Dual-Gate Architecture: Duck Gate (response) + Cedar Gate (action)
+// Dual-Gate Architecture: Duck Gate (respond) + Cedar Gate (actions)
 // =============================================================================
 
 namespace Helix {
 
-    // -------------------------------------------------------------------------
-    // Entity Types
-    // -------------------------------------------------------------------------
-    entity User in [Principal] = {
-        roles: Set<String>,
-        sandbox_path: String,
-    };
+    // Entity types — bare declarations; attrs added when evaluate() passes data.
+    entity Agent;
+    entity User;
+    entity Environment;
+    entity Tool;
 
-    entity Agent in [Principal] = {
-        user: User,
-        session_id: String,
-        receipt_id: String,
-    };
-
-    entity Tool in [Resource] = {
-        owner: User,
-        workspace: String,
-    };
-
-    entity Environment in [Resource] = {
-        path: String,
-        owner: User,
-    };
-
-    // -------------------------------------------------------------------------
-    // Core Tool Actions
-    // -------------------------------------------------------------------------
-    action bash {
-        appliesTo {
-            principal: [Agent],
-            resource: [Environment],
-        };
+    action "bash" appliesTo {
+        principal: [Agent],
+        resource: [Environment],
         context: {
-            command: String,
-            arguments: Set<String>,
-            working_directory: String,
-        };
+            command?: String,
+            path?: String
+        }
     };
 
-    action write_file {
-        appliesTo {
-            principal: [Agent],
-            resource: [Environment],
-        };
+    action "write_file" appliesTo {
+        principal: [Agent],
+        resource: [Environment, Tool],
         context: {
-            file_path: String,
-            content_length: Long,
-        };
+            path?: String,
+            content_length?: Long
+        }
     };
 
-    action edit_file {
-        appliesTo {
-            principal: [Agent],
-            resource: [Environment],
-        };
+    action "read_file" appliesTo {
+        principal: [Agent],
+        resource: [Environment, Tool],
         context: {
-            file_path: String,
-        };
+            path?: String
+        }
     };
 
-    action apply_patch {
-        appliesTo {
-            principal: [Agent],
-            resource: [Tool],
-        };
+    action "edit_file" appliesTo {
+        principal: [Agent],
+        resource: [Environment, Tool],
         context: {
-            file_path: String,
-            patch_content: String,
-        };
+            path?: String
+        }
     };
 
-    action api_call {
-        appliesTo {
-            principal: [Agent],
-            resource: [Tool],
-        };
+    action "apply_patch" appliesTo {
+        principal: [Agent],
+        resource: [Environment, Tool],
         context: {
-            endpoint: String,
-            method: String,
-            parameters: Set<String>,
-        };
+            path?: String
+        }
     };
 
-    action wallet_transfer {
-        appliesTo {
-            principal: [Agent],
-            resource: [Tool],
-        };
+    action "api_call" appliesTo {
+        principal: [Agent],
+        resource: [Tool],
         context: {
-            amount_usd: Decimal,
-            destination: String,
-        };
+            endpoint?: String,
+            method?: String
+        }
+    };
+
+    action "wallet_transfer" appliesTo {
+        principal: [Agent],
+        resource: [Tool]
     };
 }
 
 // =============================================================================
-// Governance Layer (Duck Gate outputs feed into Cedar context)
+// Governance Layer — Duck Gate outputs feed into Cedar context
 // =============================================================================
 namespace Helix_Governance {
 
-    action respond {
-        appliesTo {
-            principal: [Helix::Agent],
-            resource: [Helix::Environment],
-        };
+    action "respond" appliesTo {
+        principal: [Helix::Agent],
+        resource: [Helix::Environment],
         context: {
-            drift_score: Decimal,
+            drift_score: decimal,
             marker_count: Long,
-            has_valid_receipt: Boolean,
-            epistemic_label: String,
-        };
+            has_valid_receipt: Bool,
+            epistemic_label?: String
+        }
     };
 }
 """
 
-# Legacy alias
+# Public alias
 HELIX_SCHEMA = HELIX_BASE_SCHEMA
 
 
@@ -150,67 +123,89 @@ HELIX_SCHEMA = HELIX_BASE_SCHEMA
 def generate_schema_from_tools(
     tool_definitions: List[Dict[str, Any]],
     include_governance: bool = True,
+    namespace: str = "Helix",
+    principal_entity: str = "Agent",
+    resource_entity: str = "Tool",
 ) -> str:
-    """Generate Cedar schema actions from a list of tool definitions.
+    """Generate a Cedar schema string from a list of tool definitions.
 
-    Each tool_def:
-        - name: str
-        - parameters: List[str]  (typed as String)
-        - resource_type: str     (default: "Tool")
-        - principal_type: str    (default: "Agent")
+    Each tool_def supports:
+        - name: str            (required)
+        - parameters: List[str] (typed as optional String in context)
+        - resource_type: str   (default: resource_entity arg)
+        - principal_type: str  (default: principal_entity arg)
 
-    Returns a complete schema string.
+    Returns a complete schema string with correct appliesTo + context nesting.
     """
+    entities = {principal_entity, resource_entity}
+    if include_governance:
+        # governance section references Helix::Agent and Helix::Environment
+        entities.update({"Agent", "Environment"})
     actions = []
+
     for tool in tool_definitions:
         name = tool["name"]
         params = tool.get("parameters", [])
-        resource_type = tool.get("resource_type", "Tool")
-        principal_type = tool.get("principal_type", "Agent")
-        context_lines = "\n        ".join(f"{p}: String," for p in params)
+        res_type = tool.get("resource_type", resource_entity)
+        prin_type = tool.get("principal_type", principal_entity)
+        entities.add(res_type)
+        entities.add(prin_type)
 
-        action_block = f"""    action {name} {{
-        appliesTo {{
-            principal: [{principal_type}],
-            resource: [{resource_type}],
-        }};
-        context: {{
-            {context_lines}
-        }};
-    }};"""
+        if params:
+            ctx_lines = "\n            ".join(f"{p}?: String," for p in params)
+            context_block = f",\n        context: {{\n            {ctx_lines}\n        }}"
+        else:
+            context_block = ""
+
+        action_block = (
+            f'    action "{name}" appliesTo {{\n'
+            f"        principal: [{prin_type}],\n"
+            f"        resource: [{res_type}]{context_block}\n"
+            f"    }};"
+        )
         actions.append(action_block)
 
-    schema = "\n\n".join(actions)
+    entity_lines = "\n    ".join(f"entity {e};" for e in sorted(entities))
+    schema = (
+        f"namespace {namespace} {{\n\n"
+        f"    {entity_lines}\n\n"
+        + "\n\n".join(actions)
+        + "\n}"
+    )
+
     if include_governance:
         schema += "\n\n" + _governance_section()
+
     return schema
 
 
 def _governance_section() -> str:
-    return """namespace Helix_Governance {
+    return """\
+namespace Helix_Governance {
 
-    action respond {
-        appliesTo {
-            principal: [Helix::Agent],
-            resource: [Helix::Environment],
-        };
+    action "respond" appliesTo {
+        principal: [Helix::Agent],
+        resource: [Helix::Environment],
         context: {
-            drift_score: Decimal,
+            drift_score: decimal,
             marker_count: Long,
-            has_valid_receipt: Boolean,
-            epistemic_label: String,
-        };
+            has_valid_receipt: Bool,
+            epistemic_label?: String
+        }
     };
 }"""
 
 
 # =============================================================================
-# Advanced Schema Builder (for complex / dynamic use cases)
+# Advanced Schema Builder
 # =============================================================================
 
 @dataclass
 class SchemaBuilder:
-    """Fluent builder for constructing Cedar schemas programmatically."""
+    """Fluent builder for constructing Cedar schemas programmatically.
+
+    Produces correct Cedar Schema Language with context inside appliesTo.
+    """
 
     namespaces: Dict[str, List[str]] = field(default_factory=dict)
 
@@ -222,21 +217,9 @@ class SchemaBuilder:
     def add_entity(
         self,
         name: str,
-        attributes: Optional[Dict[str, str]] = None,
-        parents: Optional[List[str]] = None,
         namespace: str = "Helix",
     ) -> "SchemaBuilder":
-        attr_str = ""
-        if attributes:
-            attr_lines = "\n        ".join(f"{k}: {v}," for k, v in attributes.items())
-            attr_str = f" {{\n        {attr_lines}\n    }}"
-
-        parent_str = ""
-        if parents:
-            parent_str = f" in [{', '.join(parents)}]"
-
-        entity_def = f"    entity {name}{parent_str} = {attr_str};"
-        self.namespaces.setdefault(namespace, []).append(entity_def)
+        self.namespaces.setdefault(namespace, []).append(f"    entity {name};")
         return self
 
     def add_action(
@@ -247,26 +230,25 @@ class SchemaBuilder:
         context: Optional[Dict[str, str]] = None,
         namespace: str = "Helix",
     ) -> "SchemaBuilder":
-        context_block = ""
         if context:
-            ctx_lines = "\n        ".join(f"{k}: {v}," for k, v in context.items())
-            context_block = f"""\n        context: {{
-        {ctx_lines}
-    }};"""
+            ctx_lines = "\n            ".join(f"{k}: {v}," for k, v in context.items())
+            context_block = f",\n        context: {{\n            {ctx_lines}\n        }}"
+        else:
+            context_block = ""
 
-        action_def = f"""    action {name} {{
-        appliesTo {{
-            principal: [{principal}],
-            resource: [{resource}],
-        }};{context_block}
-    }};"""
+        action_def = (
+            f'    action "{name}" appliesTo {{\n'
+            f"        principal: [{principal}],\n"
+            f"        resource: [{resource}]{context_block}\n"
+            f"    }};"
+        )
         self.namespaces.setdefault(namespace, []).append(action_def)
         return self
 
     def build(self) -> str:
         parts = []
         for ns, definitions in self.namespaces.items():
-            ns_block = f"namespace {ns} {{\n\n" + "\n\n".join(definitions) + "\n}"
+            ns_block = f"namespace {ns} {{\n\n" + "\n\n".join(definitions) + "\n\n}"
             parts.append(ns_block)
         return "\n\n".join(parts)
 

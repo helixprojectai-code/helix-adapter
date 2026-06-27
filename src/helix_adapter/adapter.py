@@ -167,8 +167,8 @@ class HelixAdapter:
                     tool_call = {
                         "tool_name": name,
                         "principal": 'Helix::Agent::"default"',
-                        "action": f'Action::"{name}"',
-                        "resource": 'Resource::"default"',
+                        "action": f'Helix::Action::"{name}"',
+                        "resource": 'Helix::Environment::"default"',
                         "context": kwargs,
                     }
 

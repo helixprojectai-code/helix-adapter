@@ -11,28 +11,18 @@ Architecture:
 RFC 0003: Unified Policy Gating — Dual-Gate Containment
 """
 
-from .policy import CedarGate, CedarPolicy, PreToolUseHook, PostToolUseHook, load_policy
+from .policy import CedarDecision, CedarGate, CedarPolicy, ActionReceipt, load_policy
+from .hooks import PreToolUseHook, PostToolUseHook
 from .schema import HELIX_SCHEMA, generate_schema_from_tools
 
 __all__ = [
+    "CedarDecision",
     "CedarGate",
     "CedarPolicy",
+    "ActionReceipt",
     "PreToolUseHook",
     "PostToolUseHook",
     "load_policy",
     "HELIX_SCHEMA",
     "generate_schema_from_tools",
 ]
-
-
-def _load_policy_set(self, policy_text: str):
-    """Load policies using Cedar's native loader (clean & robust)."""
-    if not policy_text or not policy_text.strip():
-        return None, "Policy file is empty"
-
-    try:
-        from cedar import PolicySet
-        policy_set = PolicySet.from_str(policy_text)
-        return policy_set, None
-    except Exception as e:
-        return None, f"Failed to parse policy file: {e}"
