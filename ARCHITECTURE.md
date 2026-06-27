@@ -132,7 +132,7 @@ These protections operate at multiple independent layers: the **prompt layer** e
 
 Validated in `test_v12_pipeline.py` under deterministic (`temperature=0.0`) conditions.
 
-### Cedar Dual-Gate (v1.3 preview)
+### Cedar Dual-Gate (v1.4)
 
 The feature/cedar-policy-gating branch adds **CNCF Cedar** integration for dual-gate
 containment per RFC 0003:

@@ -184,7 +184,7 @@ Five-layer defense:
 | **Algorithm** | Drift blind-spot fixed — substantive responses with zero extracted claims correctly report 1.0 drift. |
 | **Access** | Compare endpoint `sp:none` bypass locked behind authorization key. |
 
-## Cedar Policy Gating (v1.3)
+## Cedar Policy Gating (v1.4)
 
 Integrates CNCF Cedar as a declarative policy engine for **dual-gate containment** —
 Duck Gate for response governance, Cedar Gate for action governance.
@@ -234,7 +234,7 @@ pip install "helix-adapter[cedar]"
 Four Helix AI nodes reviewed and approved the architecture.
 RFC 0003 details the full specification. Fail-closed: missing policy = default deny.
 
-## Helix Foundry (v1.3)
+## Helix Foundry (v1.4)
 
 A Cedar-routed multi-model inference pool. Cedar evaluates request context and
 routes to the optimal model pool — no classifier, no latency.
