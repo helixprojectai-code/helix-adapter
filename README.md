@@ -1,248 +1,271 @@
+![helix-adapter](assets/helix-adapter-logo.jpg)
+
 # helix-adapter
 
-**Portable constitutional adapter for any AI model.**
+**Portable constitutional wrapper for any AI model.**
 
-Wraps any inference backend with Helix epistemic markers, structured receipts, and drift detection. Model-agnostic — swap Deepseek for GPT-4o, Claude, or a local Llama without changing a line.
+Wraps any inference backend with Helix epistemic markers, tamper-evident receipts,
+real-time drift detection, and Cedar policy gating.
+Model-agnostic — swap DeepSeek for GPT-4o, Claude, or a local Llama without changing a line.
 
-```
+```bash
 pip install helix-adapter
 ```
 
-## Quick Start
+---
+
+## How It Works
+
+Every message passed through helix-adapter goes through four layers before it reaches your application:
+
+```
+User message
+    │
+    ▼
+┌─────────────────────────────┐
+│  Constitutional Prompt      │  Helix grammar injected before every call
+│  (system message)           │  Forces epistemic marker usage
+└────────────┬────────────────┘
+             │
+             ▼
+┌─────────────────────────────┐
+│  Model call                 │  Any OpenAI-compatible backend
+│  (your model_fn)            │
+└────────────┬────────────────┘
+             │
+             ▼
+┌─────────────────────────────┐
+│  Duck Gate                  │  Extracts markers, scores drift
+│  Marker extraction          │  [FACT] [REASONED] [HYPOTHESIS]
+│  Drift scoring              │  [UNCERTAIN] [CONCLUSION]
+└────────────┬────────────────┘
+             │
+             ▼
+┌─────────────────────────────┐
+│  Receipt                    │  SHA-256 sealed record of every exchange
+│  (+ chain_hash in sessions) │  Tamper-evident audit trail
+└────────────┬────────────────┘
+             │
+             ▼
+        JointReceipt / ChatResult
+```
+
+**Cedar Gate** (optional, v1.4+) sits alongside Duck Gate and governs actions — bash calls,
+file writes, API requests — via a declarative `.cedar` policy file. Fail-closed by default.
+
+---
+
+## Install
+
+```bash
+# Core (Cedar included)
+pip install helix-adapter
+
+# With FastAPI, uvicorn, and OpenAI client
+pip install "helix-adapter[widget]"
+
+# Dev tools
+pip install "helix-adapter[dev]"
+```
+
+---
+
+## Single-Turn — HelixAdapter
+
+For one-shot calls, wrapping existing code, or backwards-compatible usage:
 
 ```python
 from helix_adapter import HelixAdapter
 from openai import OpenAI
 
-# Your model function — any callable that takes messages, returns text
 client = OpenAI()
 
 def call_model(messages):
-    resp = client.chat.completions.create(
-        model="gpt-4o",
-        messages=messages,
-        temperature=0.7,
-    )
-    return resp.choices[0].message.content
+    return client.chat.completions.create(
+        model="gpt-4o", messages=messages, temperature=0.7
+    ).choices[0].message.content
 
-# Wrap it
 adapter = HelixAdapter(model_fn=call_model, model_name="gpt-4o")
-
-# Chat through the constitution
-result = adapter.chat("Is AI evil?")
+result = adapter.chat("Is AI deterministic?")
 
 print(result.response)
-# [FACT] AI systems are computational artifacts, not moral agents...
-# [REASONED] The perception of AI as evil arises from negative outcomes...
+# [FACT] AI model outputs are deterministic given fixed weights and temperature=0...
+# [REASONED] In practice, hardware non-determinism introduces small variation...
 
 print(result.claims)
 # [{"label": "FACT", "text": "..."}, {"label": "REASONED", "text": "..."}]
 
-print(result.receipt)
-# {"exchange_id": "...", "timestamp": ..., "hash": "sha256:...", ...}
-
-print(f"Drift: {result.drift}")
-# Drift: 0.000
+print(f"Drift: {result.drift:.4f}")   # 0.0000
+print(result.receipt)                  # {"exchange_id": ..., "hash": "sha256:...", ...}
 ```
 
-## What It Does
+---
 
-| Layer | What |
-|-------|------|
-| **Constitutional prompt** | Injects the Helix grammar before every model call |
-| **Epistemic markers** | Extracts `[FACT]`, `[REASONED]`, `[HYPOTHESIS]`, `[UNCERTAIN]`, `[CONCLUSION]` labels from responses |
-| **Receipts** | Tamper-evident JSON record with SHA-256 hash of every exchange |
-| **Drift detection** | Measures what fraction of statements lack epistemic markers (threshold: 0.17) |
+## Multi-Turn — HelixSession
 
-## Receipt Format
-
-```json
-{
-  "exchange_id": "a1b2c3d4e5f6g7h8",
-  "timestamp": 1718550000.0,
-  "model": "deepseek-chat",
-  "constitutional_prompt": "...",
-  "user_message": "Is AI evil?",
-  "assistant_response": "[FACT] AI systems are tools...",
-  "claims": [
-    {"label": "FACT", "text": "AI systems are tools, not agents"},
-    {"label": "REASONED", "text": "The perception of AI as evil..."}
-  ],
-  "drift_score": 0.0,
-  "hash": "sha256:e3b0c44298fc1c149afbf4c8996fb924..."
-}
-```
-
-## Running Drift
+`HelixSession` is the v1.5 surface for conversations. It manages the context window,
+chains receipts across turns, and tracks running drift:
 
 ```python
-# Track drift across a conversation
-adapter.chat("What is the speed of light?")
-adapter.chat("Explain quantum entanglement.")
+from helix_adapter import HelixSession, SQLiteReceiptStore
 
-print(f"Running drift: {adapter.running_drift():.3f}")
-# Running drift: 0.042
-```
+store = SQLiteReceiptStore()  # persists to ~/.helix/sessions.db
 
-## FastAPI Tutorial
-
-Stand up a constitutional chat API in one file:
-
-```python
-from fastapi import FastAPI
-from openai import OpenAI
-from helix_adapter import HelixAdapter, CONSTITUTIONAL_PROMPT
-
-app = FastAPI()
-client = OpenAI()
-
-adapter = HelixAdapter(
-    model_fn=lambda msgs: client.chat.completions.create(
-        model="deepseek-chat", messages=msgs, temperature=0.7
-    ).choices[0].message.content,
-    model_name="deepseek-chat",
+session = HelixSession(
+    model_fn=call_model,
+    model_name="gpt-4o",
+    store=store,
 )
 
-@app.post("/chat")
-async def chat(message: str):
-    result = adapter.chat(message)
-    return {
-        "response": result.response,
-        "claims": result.claims,
-        "drift": result.drift,
-        "receipt": result.receipt,
-    }
+r1 = session.send("What is quantum entanglement?")
+r2 = session.send("How does that relate to Bell's theorem?")  # context preserved
 
-@app.get("/prompt")
-async def get_prompt():
-    return {"constitutional_prompt": CONSTITUTIONAL_PROMPT}
+print(r2.turn)          # 1
+print(r2.drift_tier)    # "green"
+print(r2.chain_hash)    # links to r1 — tamper-evident chain
+
+# Session lifecycle
+session.export()         # full receipt chain as JSONL
+session.running_drift()  # average drift across all turns
+session.clear()          # wipe history, keep session ID
+session.delete()         # remove from store
+
+# Resume after restart
+session = HelixSession.resume(
+    session_id=session.id,
+    model_fn=call_model,
+    store=store,
+)
 ```
 
-Save as `api.py`, run `uvicorn api:app --port 8000`, and POST to `/chat` with `{"message": "your question"}`.
+Context manager form:
 
-## CLI Usage
+```python
+with HelixSession(model_fn=call_model) as session:
+    receipt = session.send("Hello")
+```
+
+---
+
+## Epistemic Markers
+
+The constitutional prompt requires the model to label every claim:
+
+| Marker | Meaning |
+|--------|---------|
+| `[FACT]` | Verifiable statement |
+| `[REASONED]` | Logical inference |
+| `[HYPOTHESIS]` | Testable proposition |
+| `[UNCERTAIN]` | Low-confidence assertion |
+| `[CONCLUSION]` | Summary drawn from prior claims |
+
+Drift score measures the fraction of substantive statements that lack markers.
+A score of 0.0 means fully labeled; 1.0 means no markers at all.
+
+| Score | Tier | Action |
+|-------|------|--------|
+| 0.00 – <0.10 | `green` | Healthy |
+| 0.10 – <0.17 | `yellow` | Warning |
+| 0.17+ | `red` | Drift detected |
+
+Boundaries are exclusive on the upper end (`score < threshold`), matching `DriftThreshold.tier()`.
+
+Override thresholds per deployment:
+
+```python
+from helix_adapter import DriftThreshold, HelixSession
+
+session = HelixSession(
+    model_fn=call_model,
+    drift_threshold=DriftThreshold(green=0.05, yellow=0.10, red=0.15),
+)
+```
+
+---
+
+## CLI
 
 ```bash
-# Interactive setup (prompts for endpoint, key, model)
+# Interactive setup (endpoint, key, model)
 helix-setup
 
-# Start chat
+# Interactive chat
 helix-chat
 
 # One-shot query
 helix-chat "What is the speed of light?"
 ```
 
-## Widget (Reference FastAPI Server)
+---
 
-A full constitutional chat widget with A/B comparison, drift gauge, and receipt export.
+## Receipt Format
 
-```bash
-# Install dependencies
-pip install helix-adapter[widget]
+Every exchange produces a tamper-evident receipt. In sessions, receipts are chained:
 
-# Start server
-cd widget
-uvicorn api:app --port 8001
-
-# Or install as systemd service
-# See widget/tel-chat-api.service
+```json
+{
+  "exchange_id": "a1b2c3d4e5f67890",
+  "session_id": "hsess-a3f2b1c0d9e8",
+  "turn": 2,
+  "timestamp": "2026-06-29T14:30:00Z",
+  "model": "gpt-4o",
+  "user_message": "How does that relate to Bell's theorem?",
+  "assistant_response": "[FACT] Bell's theorem proves...",
+  "claims": [{"label": "FACT", "text": "Bell's theorem proves..."}],
+  "drift_score": 0.0041,
+  "drift_tier": "green",
+  "cedar_status": "not_configured",
+  "hash": "e3b0c44298fc1c149afbf4c8996fb924...",
+  "chain_hash": "sha256(hex(prev_chain_hash) + hex(this_hash))"
+}
 ```
 
-Open `http://localhost:8001` for the chat interface.
+`chain_hash` links every turn into a tamper-evident chain — modifying any prior receipt
+breaks all subsequent hashes.
 
-The widget demonstrates:
-- Single-model constitutional chat
-- A/B comparison across models (Deepseek, Claude, Kimi)
-- Epistemic marker extraction with colored pills
-- Drift gauge with γ thresholds
-- Turn-by-turn receipt export
-- Server-side rendering (no JS required for crawlers)
-
-## Drift Thresholds
-
-| Range | Status | Meaning |
-|-------|--------|---------|
-| 0.000 – 0.099 | Green | Healthy — claims are properly labeled |
-| 0.100 – 0.169 | Yellow | Warning — some statements lack markers |
-| 0.170+ | Red | Drift detected — significant unlabeled content |
-
-## Constitutional Hardening
-
-The adapter has been red-teamed against the full Pliny jailbreak toolkit —
-**GODMODE boundary inversion, Parseltongue encoding, refusal inversion,
-OG GODMODE l33t, authority impersonation, and syntactic bypass attacks.**
-All held. 💪
-
-Five-layer defense:
-
-| Layer | Mechanism |
-|-------|-----------|
-| **Prompt** | Invariants 4.5 & 4.6 — marker format is constitutional, not stylistic. Constitutional Amendment Protocol blocks "The Hand" authority spoofing. |
-| **Extraction** | Expanded regex catches `{FACT}`, `(FACT)`, `FACT:` and bare marker variants. Nonstandard delimiter detection. |
-| **Validation** | Post-response compliance check with automatic `[UNCERTAIN]` footer injection on violations. |
-| **Algorithm** | Drift blind-spot fixed — substantive responses with zero extracted claims correctly report 1.0 drift. |
-| **Access** | Compare endpoint `sp:none` bypass locked behind authorization key. |
+---
 
 ## Cedar Policy Gating (v1.4)
 
-Integrates CNCF Cedar as a declarative policy engine for **dual-gate containment** —
-Duck Gate for response governance, Cedar Gate for action governance.
-A single `.cedar` policy file governs the entire agent lifecycle.
+Integrates CNCF Cedar as a declarative policy engine. Governs actions (bash, file writes,
+API calls) alongside the Duck Gate's response governance.
 
 ```python
 from helix_adapter.cedar import CedarPolicy
 
 policy = CedarPolicy()  # loads helix.policy + helix.schema, fail-closed
 
-# Response gate — permits only if drift < 0.17, markers present, receipt valid
-decision = policy.evaluate(
-    principal='Helix::Agent::"sentinel-001"',
-    action='Helix_Governance::Action::"respond"',
-    resource='Helix::Environment::"workspace"',
-    context={"drift_score": 0.05, "marker_count": 3, "has_valid_receipt": True},
-)
-print(decision.authorized)  # True
-print(decision.reason)      # "p0"
-print(decision.policy_hash) # "6722b0dfc523c944"
-
-# Action gate — bash blocked outside sandbox
 decision = policy.evaluate(
     principal='Helix::Agent::"sentinel-001"',
     action='Helix::Action::"bash"',
     resource='Helix::Environment::"workspace"',
     context={"path": "/home/agent/sandbox/run.sh"},
 )
-print(decision.authorized)  # True — sandbox path permitted
 
-# Seal an auditable receipt for any authorized action
-receipt = policy.seal_action(
-    exchange_id="exch-001",
-    action='Helix::Action::"bash"',
-    decision=decision,
-    context={"path": "/home/agent/sandbox/run.sh"},
-)
-print(receipt.receipt_hash)  # "sha256:e3b0c44..."
+print(decision.authorized)   # True
+print(decision.reason)       # "p0"
+print(decision.policy_hash)  # "6722b0dfc523c944"
 ```
 
-Install with Cedar support:
+Pass a Cedar policy to `HelixSession` for joint gating (Duck + Cedar co-sealed per turn):
 
-```bash
-pip install "helix-adapter[cedar]"
+```python
+session = HelixSession(model_fn=call_model, cedar_policy=policy)
 ```
 
-Four Helix AI nodes reviewed and approved the architecture.
-RFC 0003 details the full specification. Fail-closed: missing policy = default deny.
+Fail-closed: a missing or invalid policy file defaults to **deny**, not allow.
+
+---
 
 ## Helix Foundry (v1.4)
 
-A Cedar-routed multi-model inference pool. Cedar evaluates request context and
-routes to the optimal model pool — no classifier, no latency.
+A Cedar-routed multi-model inference pool. Cedar evaluates request context and routes
+to the optimal model — no classifier, no added latency.
 
 | Pool | Model | Trigger |
 |------|-------|---------|
-| `high_capability` | DeepSeek 4 Pro | complexity ≥ 8, tight drift tolerance |
-| `adversarial` | Grok 4.3 | bash / execute / api_call / shell |
+| `high_capability` | DeepSeek 4 Pro | complexity ≥ 8, tight drift |
+| `adversarial` | Grok 4.3 | bash / execute / shell |
 | `cost_optimized` | GPT-5.4 Nano | write_file / summarize / batch |
 | `sovereign` | Mistral Large 3 | fr / de / es / it / nl / pt locale |
 
@@ -253,32 +276,53 @@ python3 foundry.py
 # → http://localhost:8800
 ```
 
-Three apps at one endpoint: `GET /routed-chat` (Cedar-routed chat UI),
-`GET /audit` (constitutional scorer — paste any LLM response, get drift + compliance),
-`GET /` (dashboard).
+Three apps at one endpoint: Cedar-routed chat UI, constitutional audit scorer, dashboard.
 
-> *"The model suggests. Cedar decides. The receipt proves."*
+---
 
-> *"The markers ARE the constitution. Removing them is a constitutional violation."*
-> — Helix Constitutional Prompt v1.2, Invariant 4.6
+## Constitutional Hardening
 
-## Try It
+Red-teamed against the full Pliny jailbreak toolkit: GODMODE boundary inversion,
+Parseltongue encoding, refusal inversion, OG GODMODE l33t, authority impersonation,
+and syntactic bypass attacks. All held.
 
-A live Helix Constitutional Chat demo is running at **[helixaiinnovations.ca/chat/](https://helixaiinnovations.ca/chat/)** — DM [Stephen Hope on LinkedIn](https://www.linkedin.com/in/stephen-hope-75497937a) for access.. Includes A/B model comparison, drift gauge, receipt export, and the full v1.2 constitutional prompt. See `examples/receipts.json` for real output from the live instance.
+Five-layer defense: constitutional prompt invariants, expanded marker extraction,
+post-response compliance validation, drift blind-spot fix, and compare endpoint authorization.
+
+---
 
 ## Compatibility
 
 Works with any model that accepts OpenAI-format messages:
 
-- Deepseek, GPT-4o, Claude, Gemini, Llama, Mistral
-- Local models (Ollama, LM Studio, vLLM)
+- DeepSeek, GPT-4o, Claude, Gemini, Llama, Mistral
+- Local models — Ollama, LM Studio, vLLM
 - Custom endpoints
 
-The constitution travels with you. Swap the model, the rules stay the same.
+---
 
-## Contributors
+## FastAPI
 
-A number of Helix AI nodes participated in developement lead by Helix2 and Claude.ai.
+For a complete FastAPI walkthrough — multi-turn session endpoints, session management,
+auth, resume, systemd service, and backend swap examples:
+
+**→ [QUICKSTART.md](QUICKSTART.md)**
+
+---
+
+## Live Demo
+
+A live constitutional chat instance is running at
+**[helixaiinnovations.ca/chat/](https://helixaiinnovations.ca/chat/)** — DM
+[Stephen Hope on LinkedIn](https://www.linkedin.com/in/stephen-hope-75497937a) for access.
+Includes A/B model comparison, drift gauge, receipt export, and the full constitutional prompt.
+
+---
+
+> *"The model suggests. Cedar decides. The receipt proves."*
+
+> *"The markers ARE the constitution. Removing them is a constitutional violation."*
+> — Helix Constitutional Prompt v1.2, Invariant 4.6
 
 ---
 
