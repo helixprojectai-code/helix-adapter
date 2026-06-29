@@ -1,3 +1,5 @@
+![helix-adapter](assets/helix-adapter-logo.jpg)
+
 # helix-adapter
 
 **Portable constitutional wrapper for any AI model.**
