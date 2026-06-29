@@ -192,8 +192,10 @@ def chat(req: ChatRequest, _: str = Depends(require_key)):
 Or use the Foundry key store directly (requires the full Foundry install):
 
 ```python
-# foundry/foundry_auth.py ships with helix-adapter
-from foundry.foundry_auth import require_key
+# foundry/ ships with helix-adapter — add it to path first
+import sys
+sys.path.insert(0, "foundry")
+from foundry_auth import require_key
 ```
 
 ---
@@ -295,9 +297,11 @@ modifying any prior receipt breaks all subsequent hashes.
 
 | Score | Tier | Meaning |
 |-------|------|---------|
-| 0.00 – 0.09 | `green` | Healthy — claims are properly labeled |
-| 0.10 – 0.16 | `yellow` | Warning — some statements lack markers |
+| 0.00 – <0.10 | `green` | Healthy — claims are properly labeled |
+| 0.10 – <0.17 | `yellow` | Warning — some statements lack markers |
 | 0.17+ | `red` | Drift — significant unlabeled content |
+
+Boundaries are exclusive on the upper end (`score < threshold`), matching `DriftThreshold.tier()`.
 
 Override per deployment:
 

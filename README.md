@@ -164,9 +164,11 @@ A score of 0.0 means fully labeled; 1.0 means no markers at all.
 
 | Score | Tier | Action |
 |-------|------|--------|
-| 0.00 – 0.09 | `green` | Healthy |
-| 0.10 – 0.16 | `yellow` | Warning |
+| 0.00 – <0.10 | `green` | Healthy |
+| 0.10 – <0.17 | `yellow` | Warning |
 | 0.17+ | `red` | Drift detected |
+
+Boundaries are exclusive on the upper end (`score < threshold`), matching `DriftThreshold.tier()`.
 
 Override thresholds per deployment:
 
@@ -214,7 +216,7 @@ Every exchange produces a tamper-evident receipt. In sessions, receipts are chai
   "drift_tier": "green",
   "cedar_status": "not_configured",
   "hash": "e3b0c44298fc1c149afbf4c8996fb924...",
-  "chain_hash": "sha256 of (prev_chain_hash + this_hash)"
+  "chain_hash": "sha256(hex(prev_chain_hash) + hex(this_hash))"
 }
 ```
 
