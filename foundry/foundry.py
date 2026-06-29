@@ -25,8 +25,10 @@ import sys
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
+
+from foundry_auth import require_key
 from openai import OpenAI
 from pydantic import BaseModel
 
@@ -136,9 +138,9 @@ MODELS = {
         "temperature": 0.0,
     },
     "mistral-large-3": {
-        "endpoint": MISTRAL_ENDPOINT,
-        "deployment": "mistral-large-3",
-        "key_env": "MISTRAL_API_KEY",
+        "endpoint": AZURE_ENDPOINT,
+        "deployment": "Mistral-Large-3",
+        "key_env": "AZURE_OPENAI_FOUNDRY_KEY",
         "label": "Mistral Large 3",
         "temperature": 0.0,
     },
@@ -302,6 +304,15 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
 const API = '/routed-chat';
 let allEntries = [];
 
+function getApiKey() {
+  let key = localStorage.getItem('foundry_api_key');
+  if (!key) {
+    key = prompt('Helix Foundry — Enter your API key (hx-...):');
+    if (key) localStorage.setItem('foundry_api_key', key.trim());
+  }
+  return key ? key.trim() : '';
+}
+
 function driftColor(v) {
   if (v < 0.15) return '#238636';
   if (v < 0.35) return '#d29922';
@@ -362,7 +373,7 @@ async function send() {
   try {
     const resp = await fetch(API, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'X-API-Key': getApiKey()},
       body: JSON.stringify({action: action, message: msg})
     });
     const data = await resp.json();
@@ -396,7 +407,7 @@ async function send() {
 
 async function loadLedger() {
   try {
-    const resp = await fetch('/routed-chat/ledger?limit=100');
+    const resp = await fetch('/routed-chat/ledger?limit=100', {headers: {'X-API-Key': getApiKey()}});
     const data = await resp.json();
     if (data.entries && data.entries.length) {
       allEntries = data.entries;
@@ -478,7 +489,7 @@ def _load_entries(limit: int = 100) -> list:
 
 
 @app.post("/chat")
-async def chat(req: ChatRequest, request: Request):
+async def chat(req: ChatRequest, request: Request, _key: dict = Depends(require_key)):
     _check_rate_limit(request)
     if not req.message.strip():
         raise HTTPException(400, "message empty")
@@ -521,7 +532,7 @@ async def routed_chat_page():
 
 
 @app.post("/routed-chat")
-async def routed_chat(req: RoutedChatRequest, request: Request):
+async def routed_chat(req: RoutedChatRequest, request: Request, _key: dict = Depends(require_key)):
     """Cedar decision mesh routing. Context → Policy evaluation → ModelPool → model."""
     _check_rate_limit(request)
     if not req.message.strip():
@@ -576,12 +587,12 @@ def _ledger_response(limit: int) -> dict:
 
 
 @app.get("/ledger")
-async def ledger(limit: int = 20):
+async def ledger(limit: int = 20, _key: dict = Depends(require_key)):
     return _ledger_response(limit)
 
 
 @app.get("/routed-chat/ledger")
-async def routed_chat_ledger(limit: int = 20):
+async def routed_chat_ledger(limit: int = 20, _key: dict = Depends(require_key)):
     return _ledger_response(limit)
 
 
@@ -614,7 +625,7 @@ class AuditRequest(BaseModel):
 
 
 @app.post("/audit")
-async def audit(req: AuditRequest, request: Request):
+async def audit(req: AuditRequest, request: Request, _key: dict = Depends(require_key)):
     """Score an arbitrary LLM response through the Helix constitutional lens."""
     if req.prompt:
         _check_rate_limit(request)
@@ -832,6 +843,15 @@ AUDIT_HTML = """<!DOCTYPE html>
 <script>
 let auditHistory = [];
 
+function getApiKey() {
+  let key = localStorage.getItem('foundry_api_key');
+  if (!key) {
+    key = prompt('Helix Foundry — Enter your API key (hx-...):');
+    if (key) localStorage.setItem('foundry_api_key', key.trim());
+  }
+  return key ? key.trim() : '';
+}
+
 function driftColor(v) {
   if (v < 0.15) return '#238636';
   if (v < 0.35) return '#d29922';
@@ -893,7 +913,7 @@ async function runAudit() {
   try {
     const resp = await fetch('/audit', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', 'X-API-Key': getApiKey()},
       body: JSON.stringify({text: text, prompt: prompt})
     });
     const d = await resp.json();
