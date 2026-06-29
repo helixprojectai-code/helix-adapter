@@ -244,6 +244,17 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
 </style>
 </head>
 <body>
+<div id="keyGate" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:999;align-items:center;justify-content:center;flex-direction:column;gap:16px;">
+  <div style="font-size:20px;font-weight:600;">&#9877; Helix Foundry</div>
+  <div style="color:var(--text-dim);font-size:13px;">Enter your API key to continue</div>
+  <div style="display:flex;gap:8px;">
+    <input id="keyInput" type="password" placeholder="hx-..." style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 14px;color:var(--text);font-size:13px;outline:none;width:320px;" onkeydown="if(event.key==='Enter')submitKey()">
+    <button onclick="submitKey()" style="background:var(--accent);color:#000;border:none;border-radius:var(--radius);padding:8px 20px;font-weight:600;cursor:pointer;">Enter</button>
+  </div>
+  <div id="keyError" style="color:var(--uncertain);font-size:12px;min-height:16px;"></div>
+</div>
+
+<div id="appContent" style="display:none;">
 <div class="container">
 
 <div class="nav">
@@ -303,15 +314,53 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
 <script>
 const API = '/routed-chat';
 let allEntries = [];
+let _apiKey = '';
 
-function getApiKey() {
-  let key = localStorage.getItem('foundry_api_key');
-  if (!key) {
-    key = prompt('Helix Foundry — Enter your API key (hx-...):');
-    if (key) localStorage.setItem('foundry_api_key', key.trim());
+function getApiKey() { return _apiKey; }
+
+async function initAuth() {
+  const stored = localStorage.getItem('foundry_api_key');
+  if (stored) {
+    const ok = await validateKey(stored);
+    if (ok) { _apiKey = stored; showApp(); return; }
+    localStorage.removeItem('foundry_api_key');
   }
-  return key ? key.trim() : '';
+  showKeyForm();
 }
+
+async function validateKey(key) {
+  try {
+    const r = await fetch('/ping', {headers: {'X-API-Key': key}});
+    return r.ok;
+  } catch { return false; }
+}
+
+function showKeyForm() {
+  document.getElementById('keyGate').style.display = 'flex';
+  document.getElementById('appContent').style.display = 'none';
+}
+
+function showApp() {
+  document.getElementById('keyGate').style.display = 'none';
+  document.getElementById('appContent').style.display = 'block';
+  loadLedger();
+}
+
+async function submitKey() {
+  const key = document.getElementById('keyInput').value.trim();
+  if (!key) return;
+  document.getElementById('keyError').textContent = '';
+  const ok = await validateKey(key);
+  if (ok) {
+    localStorage.setItem('foundry_api_key', key);
+    _apiKey = key;
+    showApp();
+  } else {
+    document.getElementById('keyError').textContent = 'Invalid key.';
+  }
+}
+
+initAuth();
 
 function driftColor(v) {
   if (v < 0.15) return '#238636';
@@ -428,9 +477,9 @@ async function loadLedger() {
     document.getElementById('ledger').innerHTML = '<span class=\"empty\">Ledger unavailable.</span>';
   }
 }
-loadLedger();
+
 </script>
-</body></html>"""
+</div></body></html>"""
 
 
 app = FastAPI(title="Helix Foundry", version="1.0.0")
@@ -584,6 +633,11 @@ async def routed_chat(req: RoutedChatRequest, request: Request, _key: dict = Dep
 def _ledger_response(limit: int) -> dict:
     entries = _load_entries(limit)
     return {"count": len(entries), "entries": list(reversed(entries))}
+
+
+@app.get("/ping")
+async def ping(_key: dict = Depends(require_key)):
+    return {"ok": True, "node_id": _key["node_id"]}
 
 
 @app.get("/ledger")
@@ -785,6 +839,17 @@ AUDIT_HTML = """<!DOCTYPE html>
 </style>
 </head>
 <body>
+<div id="keyGate" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:999;align-items:center;justify-content:center;flex-direction:column;gap:16px;">
+  <div style="font-size:20px;font-weight:600;">&#9877; Helix Foundry</div>
+  <div style="color:var(--text-dim);font-size:13px;">Enter your API key to continue</div>
+  <div style="display:flex;gap:8px;">
+    <input id="keyInput" type="password" placeholder="hx-..." style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 14px;color:var(--text);font-size:13px;outline:none;width:320px;" onkeydown="if(event.key==='Enter')submitKey()">
+    <button onclick="submitKey()" style="background:var(--accent);color:#000;border:none;border-radius:var(--radius);padding:8px 20px;font-weight:600;cursor:pointer;">Enter</button>
+  </div>
+  <div id="keyError" style="color:var(--uncertain);font-size:12px;min-height:16px;"></div>
+</div>
+
+<div id="appContent" style="display:none;">
 <div class="container">
 
 <div class="nav">
@@ -842,15 +907,52 @@ AUDIT_HTML = """<!DOCTYPE html>
 </div>
 <script>
 let auditHistory = [];
+let _apiKey = '';
 
-function getApiKey() {
-  let key = localStorage.getItem('foundry_api_key');
-  if (!key) {
-    key = prompt('Helix Foundry — Enter your API key (hx-...):');
-    if (key) localStorage.setItem('foundry_api_key', key.trim());
+function getApiKey() { return _apiKey; }
+
+async function initAuth() {
+  const stored = localStorage.getItem('foundry_api_key');
+  if (stored) {
+    const ok = await validateKey(stored);
+    if (ok) { _apiKey = stored; showApp(); return; }
+    localStorage.removeItem('foundry_api_key');
   }
-  return key ? key.trim() : '';
+  showKeyForm();
 }
+
+async function validateKey(key) {
+  try {
+    const r = await fetch('/ping', {headers: {'X-API-Key': key}});
+    return r.ok;
+  } catch { return false; }
+}
+
+function showKeyForm() {
+  document.getElementById('keyGate').style.display = 'flex';
+  document.getElementById('appContent').style.display = 'none';
+}
+
+function showApp() {
+  document.getElementById('keyGate').style.display = 'none';
+  document.getElementById('appContent').style.display = 'block';
+}
+
+async function submitKey() {
+  const key = document.getElementById('keyInput').value.trim();
+  if (!key) return;
+  document.getElementById('keyError').textContent = '';
+  const ok = await validateKey(key);
+  if (ok) {
+    localStorage.setItem('foundry_api_key', key);
+    _apiKey = key;
+    showApp();
+  } else {
+    document.getElementById('keyError').textContent = 'Invalid key.';
+  }
+}
+
+initAuth();
 
 function driftColor(v) {
   if (v < 0.15) return '#238636';
@@ -1005,7 +1107,7 @@ async function runAudit() {
   btn.disabled = false;
 }
 </script>
-</body></html>"""
+</div></body></html>"""
 
 
 @app.get("/audit", response_class=HTMLResponse)
