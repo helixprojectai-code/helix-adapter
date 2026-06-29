@@ -7,6 +7,101 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.5.0] — 2026-06-29
+
+### Summary
+
+Multi-turn session architecture. `HelixSession` replaces per-call `HelixAdapter` usage
+for conversational workloads. Receipts are now chained across turns into a tamper-evident
+chain — modifying any prior receipt breaks all subsequent chain hashes. Pluggable store
+layer: in-memory default or SQLite WAL-mode persistence with cross-restart session resume.
+Cedar and Duck Gate co-sealed per turn in `JointReceipt`. 81 new tests. No breaking
+changes to `HelixAdapter` or existing integrations.
+
+### Added
+
+- **`HelixSession`** (`src/helix_adapter/session.py`) — multi-turn constitutional
+  session host. Manages conversation context window, per-turn receipt generation,
+  and session lifecycle (`send`, `clear`, `delete`, `export`, `running_drift`).
+  Context manager protocol supported.
+
+- **`HelixSession.resume()`** — classmethod to reload a prior session from store,
+  rebuilding the full conversation context window from stored receipts and restoring
+  chain continuity.
+
+- **`JointReceipt`** — dataclass co-sealing Duck Gate (drift score, claims) and Cedar
+  Gate (action decision, policy hash) in a single tamper-evident record per turn.
+  Fields: `exchange_id`, `session_id`, `turn`, `timestamp`, `model`, `user_message`,
+  `assistant_response`, `claims`, `drift_score`, `drift_tier`, `drift_method`,
+  `cedar_action`, `cedar_authorized`, `cedar_policy_hash`, `cedar_reason`,
+  `cedar_status`, `hash`, `chain_hash`.
+
+- **`chain_hash`** — tamper-evident chain linking all receipts in a session.
+  Computed as `sha256(hex(prev_chain_hash) + hex(this_hash))`. Turn 0 seeds
+  with empty string. Breaks on any modification to prior receipt history.
+
+- **`DriftThreshold`** — configurable dataclass (`green`, `yellow`, `red` float
+  thresholds) with `tier(score)` method. Defaults match v1.4 thresholds. Pass
+  per-deployment instances to `HelixSession` for tuned tolerance.
+
+- **`InMemoryReceiptStore`** (`src/helix_adapter/store.py`) — default store, no
+  persistence. Full `ReceiptStore` ABC contract: `save`, `get_session`,
+  `list_sessions`, `delete_session`, `export_session`.
+
+- **`SQLiteReceiptStore`** — WAL-mode persistent store. Auto-creates `~/.helix/sessions.db`
+  (path configurable). Schema: `receipts` table with indexed `(session_id, turn)`.
+  Survives process restarts; sessions resumable across instances.
+
+- **`ReceiptStore` ABC** — abstract base class defining the store interface. Custom
+  stores (Redis, Postgres, etc.) implement four methods.
+
+- **`tests/test_session.py`** — 81-test suite covering `DriftThreshold` boundaries,
+  both store implementations and their shared interface contract (parametrized),
+  `HelixSession` core behavior, chain hash integrity and tamper detection,
+  session lifecycle, `resume`, `JointReceipt` structure, context manager protocol,
+  and public API regression.
+
+- **`QUICKSTART.md`** — dedicated FastAPI quickstart. Full working API with session
+  endpoints, curl examples, session resume across restarts, all lifecycle endpoints,
+  API key auth, DeepSeek / Claude / Ollama backend swap examples, systemd unit,
+  and receipt schema reference.
+
+- **`assets/helix-adapter-logo.jpg`** — project logo added to repo, inserted into
+  README header.
+
+### Changed
+
+- **`cedar_python` promoted to core dependency** — moved from `[project.optional-dependencies]`
+  to `[project.dependencies]` in `pyproject.toml`. `pip install helix-adapter` now
+  includes Cedar automatically.
+
+- **`.gitignore`** — added `*.db`, `*.db-shm`, `*.db-wal`, `foundry/foundry-ledger.jsonl`
+
+- **`__init__.py`** — exports `HelixSession`, `JointReceipt`, `DriftThreshold`,
+  `InMemoryReceiptStore`, `SQLiteReceiptStore`.
+
+- **`README.md`** — rewritten as standard project landing page: architecture flow
+  diagram, install, single-turn and multi-turn usage, markers table, drift thresholds,
+  CLI, receipt format, Cedar, Foundry, hardening. FastAPI section now links to
+  QUICKSTART. Logo in header.
+
+- **Drift threshold tables** (README + QUICKSTART) — boundary notation updated from
+  `0.00–0.09` to `0.00–<0.10` with explicit note that boundaries are exclusive,
+  matching `DriftThreshold.tier()` behaviour. Corrects potential misreading in
+  regulatory contexts.
+
+- **`chain_hash` spec** — clarified in both README receipt table and QUICKSTART
+  receipt schema as hex-string concatenation (`sha256(hex(prev) + hex(this))`),
+  not byte concatenation. External verifiers require this distinction.
+
+### Fixed
+
+- **QUICKSTART Foundry import** — `from foundry.foundry_auth import require_key`
+  replaced with `sys.path.insert(0, "foundry"); from foundry_auth import require_key`.
+  `foundry/` has no `__init__.py`; the original import raised `ModuleNotFoundError`.
+
+---
+
 ## [1.4.0] — 2026-06-26
 
 ### Summary
