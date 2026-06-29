@@ -286,7 +286,7 @@ Every `session.send()` call returns a `JointReceipt`:
 | `drift_tier` | str | `green` / `yellow` / `red` |
 | `cedar_status` | str | `active` / `fail_closed` / `not_configured` |
 | `hash` | str | SHA-256 over all receipt fields |
-| `chain_hash` | str | SHA-256 of `prev_chain_hash + this_hash` |
+| `chain_hash` | str | SHA-256 of `hex(prev_chain_hash) + hex(this_hash)` — hex string concatenation |
 
 The `chain_hash` links every turn in a session into a tamper-evident chain —
 modifying any prior receipt breaks all subsequent hashes.
