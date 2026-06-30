@@ -32,12 +32,36 @@ from foundry_auth import require_key
 from openai import OpenAI
 from pydantic import BaseModel
 
-from helix_adapter import HelixAdapter
+from helix_adapter import HelixAdapter, HelixSession
 from helix_adapter.drift import compute_drift
 from helix_adapter.markers import extract_claims
+from helix_adapter.store import SQLiteReceiptStore
 
 HERE = Path(__file__).parent
 LEDGER_FILE = HERE / "foundry-ledger.jsonl"
+
+# ── Session Store ──
+FOUNDRY_STORE = SQLiteReceiptStore(path=HERE / "foundry-sessions.db")
+
+# Session metadata: session_id → {model_name, label, pool, policy_hash, created}
+# Persisted to JSON so sessions survive Foundry restarts.
+SESSION_META_FILE = HERE / "foundry-session-meta.json"
+
+
+def _load_session_meta() -> dict:
+    if SESSION_META_FILE.exists():
+        try:
+            return json.loads(SESSION_META_FILE.read_text())
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_session_meta(meta: dict) -> None:
+    SESSION_META_FILE.write_text(json.dumps(meta, indent=2))
+
+
+SESSION_META: dict = _load_session_meta()
 
 # ── Model Registry (Azure-hosted, $20K dedicated credit) ──
 # Endpoint: helix-nodes-resource (standalone, separate from demo)
@@ -186,6 +210,46 @@ def build_adapter(model_name: str):
     return adapter, cfg["label"]
 
 
+def build_session(model_name: str, session_id: str | None = None) -> tuple["HelixSession", str]:
+    """Create or resume a HelixSession for the given model.
+
+    Returns (session, label). If session_id is provided, resumes from
+    FOUNDRY_STORE; otherwise creates a fresh session.
+    """
+    cfg = MODELS.get(model_name)
+    if not cfg:
+        raise ValueError(f"Unknown model: {model_name}")
+    key = load_key(cfg["key_env"])
+    if not key:
+        raise ValueError(f"No API key for {model_name}")
+    client = OpenAI(api_key=key, base_url=cfg["endpoint"])
+    depl = cfg["deployment"]
+
+    def fn(messages):
+        kwargs = {
+            "model": depl,
+            "messages": messages,
+            "temperature": cfg["temperature"],
+        }
+        if "azure" in cfg["endpoint"]:
+            kwargs["max_completion_tokens"] = 4096
+        else:
+            kwargs["max_tokens"] = 4096
+        return client.chat.completions.create(**kwargs).choices[0].message.content
+
+    label = cfg["label"]
+    if session_id:
+        session = HelixSession.resume(
+            session_id,
+            model_fn=fn,
+            model_name=label,
+            store=FOUNDRY_STORE,
+        )
+    else:
+        session = HelixSession(model_fn=fn, model_name=label, store=FOUNDRY_STORE)
+    return session, label
+
+
 ROUTED_CHAT_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -260,6 +324,7 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
 <div class="nav">
   <a href="/routed-chat/" class="active">Routed Chat</a>
   <a href="/audit/">Audit</a>
+  <a href="/sessions/">Sessions</a>
   <a href="/">Dashboard</a>
 </div>
 
@@ -275,6 +340,14 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
 
 <div class="card">
   <h2>Send Message</h2>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+    <label style="font-size:12px;color:var(--text-dim);display:flex;align-items:center;gap:6px;cursor:pointer;">
+      <input type="checkbox" id="sessionToggle" onchange="toggleSessionMode()" style="accent-color:var(--accent);">
+      Session mode
+    </label>
+    <span id="sessionBadge" style="display:none;font-size:11px;font-family:monospace;background:#1a2332;border:1px solid var(--accent);border-radius:4px;padding:2px 8px;color:var(--accent);"></span>
+    <button id="endSessionBtn" onclick="endSession()" style="display:none;background:var(--uncertain);color:#fff;border:none;border-radius:var(--radius);padding:3px 10px;font-size:11px;cursor:pointer;">End Session</button>
+  </div>
   <div class="input-row">
     <input id="msgInput" type="text" placeholder="Ask anything..." autofocus onkeydown="if(event.key==='Enter')send()">
     <select id="actionSelect">
@@ -315,6 +388,10 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
 const API = '/routed-chat';
 let allEntries = [];
 let _apiKey = '';
+let _sessionMode = false;
+let _sessionId = null;
+let _sessionTurn = 0;
+let _sessionModel = null;
 
 function getApiKey() { return _apiKey; }
 
@@ -410,6 +487,41 @@ document.getElementById('exportBtn').addEventListener('click', () => {
   URL.revokeObjectURL(a.href);
 });
 
+function toggleSessionMode() {
+  _sessionMode = document.getElementById('sessionToggle').checked;
+  if (!_sessionMode) {
+    _sessionId = null;
+    _sessionTurn = 0;
+    _sessionModel = null;
+    document.getElementById('sessionBadge').style.display = 'none';
+    document.getElementById('endSessionBtn').style.display = 'none';
+  }
+}
+
+async function endSession() {
+  if (!_sessionId) return;
+  try {
+    await fetch('/session/' + _sessionId, {method: 'DELETE', headers: {'X-API-Key': getApiKey()}});
+  } catch(e) {}
+  _sessionId = null;
+  _sessionTurn = 0;
+  _sessionModel = null;
+  document.getElementById('sessionBadge').style.display = 'none';
+  document.getElementById('endSessionBtn').style.display = 'none';
+  document.getElementById('sessionToggle').checked = false;
+  _sessionMode = false;
+}
+
+async function _startSession(action) {
+  const resp = await fetch('/session/start', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-API-Key': getApiKey()},
+    body: JSON.stringify({action: action})
+  });
+  if (!resp.ok) throw new Error('Session start failed: ' + resp.status);
+  return await resp.json();
+}
+
 async function send() {
   const msg = document.getElementById('msgInput').value.trim();
   if (!msg) return;
@@ -420,28 +532,63 @@ async function send() {
   document.getElementById('result').style.display = 'none';
 
   try {
-    const resp = await fetch(API, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-API-Key': getApiKey()},
-      body: JSON.stringify({action: action, message: msg})
-    });
-    const data = await resp.json();
+    let data;
+    if (_sessionMode) {
+      // Start session on first message
+      if (!_sessionId) {
+        document.getElementById('loading').querySelector ? null : null;
+        const sess = await _startSession(action);
+        _sessionId = sess.session_id;
+        _sessionModel = sess.label;
+        document.getElementById('sessionBadge').textContent = _sessionId.substring(0, 16) + '… · ' + _sessionModel;
+        document.getElementById('sessionBadge').style.display = 'inline';
+        document.getElementById('endSessionBtn').style.display = 'inline';
+      }
+      // Send turn
+      const resp = await fetch('/session/' + _sessionId + '/send', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-API-Key': getApiKey()},
+        body: JSON.stringify({message: msg})
+      });
+      data = await resp.json();
+      _sessionTurn = data.turn + 1;
 
-    const dpct = Math.min(100, (data.drift||0)*100);
-    document.getElementById('routeInfo').innerHTML =
-      '<div class="route-badge">' +
-      'Cedar &rarr; <span class="pool">'+data.pool+'</span> &rarr; <span class="model">'+data.label+'</span>' +
-      '<span class="hash">#'+(data.policy_hash||'fallback').substring(0,12)+'</span>' +
-      '</div>';
-    document.getElementById('responseText').textContent = data.response || '(empty)';
-    document.getElementById('metaInfo').innerHTML =
-      '<span class="drift-bar">drift <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+driftColor(data.drift||0)+';"></span></span> &gamma; '+(data.drift||0).toFixed(3)+'</span>' +
-      renderClaims(data.claims) +
-      '<span style="font-family:monospace;font-size:10px;">receipt #'+(data.receipt?.hash||'?').substring(0,10)+'</span>';
+      const dpct = Math.min(100, (data.drift_score||0)*100);
+      document.getElementById('routeInfo').innerHTML =
+        '<div class="route-badge">' +
+        'Session &rarr; <span class="pool">' + (data.pool||'') + '</span> &rarr; <span class="model">' + (data.model||_sessionModel) + '</span>' +
+        '<span class="hash">turn ' + data.turn + '</span>' +
+        '<span class="hash">chain #' + (data.chain_hash||'').substring(0,10) + '</span>' +
+        '</div>';
+      document.getElementById('responseText').textContent = data.response || '(empty)';
+      document.getElementById('metaInfo').innerHTML =
+        '<span class="drift-bar">drift <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+driftColor(data.drift_score||0)+';"></span></span> &gamma; '+(data.drift_score||0).toFixed(3)+'</span>' +
+        renderClaims(data.claims) +
+        '<span style="font-family:monospace;font-size:10px;">receipt #'+(data.hash||'?').substring(0,10)+'</span>';
+    } else {
+      // Stateless single-turn (existing behaviour)
+      const resp = await fetch(API, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-API-Key': getApiKey()},
+        body: JSON.stringify({action: action, message: msg})
+      });
+      data = await resp.json();
+
+      const dpct = Math.min(100, (data.drift||0)*100);
+      document.getElementById('routeInfo').innerHTML =
+        '<div class="route-badge">' +
+        'Cedar &rarr; <span class="pool">'+data.pool+'</span> &rarr; <span class="model">'+data.label+'</span>' +
+        '<span class="hash">#'+(data.policy_hash||'fallback').substring(0,12)+'</span>' +
+        '</div>';
+      document.getElementById('responseText').textContent = data.response || '(empty)';
+      document.getElementById('metaInfo').innerHTML =
+        '<span class="drift-bar">drift <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+driftColor(data.drift||0)+';"></span></span> &gamma; '+(data.drift||0).toFixed(3)+'</span>' +
+        renderClaims(data.claims) +
+        '<span style="font-family:monospace;font-size:10px;">receipt #'+(data.receipt?.hash||'?').substring(0,10)+'</span>';
+      loadLedger();
+    }
+
     document.getElementById('result').style.display = 'block';
-
-    // Refresh ledger
-    loadLedger();
   } catch(e) {
     document.getElementById('routeInfo').innerHTML = '<span style="color:var(--uncertain)">Error: '+e.message+'</span>';
     document.getElementById('responseText').textContent = '';
@@ -514,6 +661,18 @@ class RoutedChatRequest(BaseModel):
     drift_tolerance: float = 0.10
     priority: str = "interactive"
     locale: str = "en"
+
+
+class SessionStartRequest(BaseModel):
+    action: str = "analyze"
+    task_complexity: int = 5
+    drift_tolerance: float = 0.10
+    priority: str = "interactive"
+    locale: str = "en"
+
+
+class SessionSendRequest(BaseModel):
+    message: str
 
 
 def _save_entry(entry: dict):
@@ -650,6 +809,150 @@ async def routed_chat_ledger(limit: int = 20, _key: dict = Depends(require_key))
     return _ledger_response(limit)
 
 
+# ── Session Endpoints ──
+
+def _session_stats(session_id: str) -> dict:
+    receipts = FOUNDRY_STORE.get_session(session_id)
+    if not receipts:
+        return {"turn_count": 0, "last_activity": None, "running_drift": 0.0}
+    drifts = [r.get("drift_score", 0.0) for r in receipts]
+    return {
+        "turn_count": len(receipts),
+        "last_activity": receipts[-1].get("timestamp"),
+        "running_drift": round(sum(drifts) / len(drifts), 4),
+    }
+
+
+@app.post("/session/start")
+async def session_start(req: SessionStartRequest, request: Request, _key: dict = Depends(require_key)):
+    """Cedar-route context, commit model, create session. Returns session_id."""
+    _check_rate_limit(request)
+    context = {
+        "action_type": req.action,
+        "task_complexity": req.task_complexity,
+        "drift_tolerance": req.drift_tolerance,
+        "priority": req.priority,
+        "locale": req.locale,
+    }
+    route = cedar_route(context)
+    try:
+        session, label = build_session(route["model"])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    meta = {
+        "model_name": route["model"],
+        "label": label,
+        "pool": route["pool"],
+        "policy_hash": route["policy_hash"],
+        "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    SESSION_META[session.id] = meta
+    _save_session_meta(SESSION_META)
+
+    return {
+        "session_id": session.id,
+        "model": route["model"],
+        "label": label,
+        "pool": route["pool"],
+        "policy_hash": route["policy_hash"],
+    }
+
+
+@app.post("/session/{session_id}/send")
+async def session_send(session_id: str, req: SessionSendRequest, request: Request, _key: dict = Depends(require_key)):
+    """Send a turn to an existing session. Returns JointReceipt fields."""
+    _check_rate_limit(request)
+    if not req.message.strip():
+        raise HTTPException(400, "message empty")
+    meta = SESSION_META.get(session_id)
+    if not meta:
+        # Try to recover model from stored receipts if meta was lost
+        receipts = FOUNDRY_STORE.get_session(session_id)
+        if not receipts:
+            raise HTTPException(404, f"Session not found: {session_id}")
+        stored_label = receipts[0].get("model", "")
+        model_name = next(
+            (k for k, v in MODELS.items() if v["label"] == stored_label),
+            "deepseek-4-pro",
+        )
+        meta = {"model_name": model_name, "label": stored_label, "pool": "unknown", "policy_hash": ""}
+    try:
+        session, label = build_session(meta["model_name"], session_id=session_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"Session resume failed: {e}")
+
+    try:
+        receipt = session.send(req.message)
+    except Exception as e:
+        raise HTTPException(502, f"Model call failed: {e}")
+
+    return {
+        "session_id": session_id,
+        "turn": receipt.turn,
+        "model": label,
+        "pool": meta.get("pool"),
+        "response": receipt.assistant_response,
+        "claims": receipt.claims,
+        "drift_score": receipt.drift_score,
+        "drift_tier": receipt.drift_tier,
+        "cedar_status": receipt.cedar_status,
+        "hash": receipt.hash,
+        "chain_hash": receipt.chain_hash,
+    }
+
+
+@app.get("/session/{session_id}")
+async def session_get(session_id: str, _key: dict = Depends(require_key)):
+    """Session metadata and full receipt chain."""
+    meta = SESSION_META.get(session_id, {})
+    receipts = FOUNDRY_STORE.get_session(session_id)
+    if not receipts and not meta:
+        raise HTTPException(404, f"Session not found: {session_id}")
+    stats = _session_stats(session_id)
+    return {
+        "session_id": session_id,
+        **meta,
+        **stats,
+        "receipts": receipts,
+    }
+
+
+@app.get("/session/{session_id}/export")
+async def session_export(session_id: str, fmt: str = "json", _key: dict = Depends(require_key)):
+    """Export full session receipt chain as JSON or JSONL."""
+    receipts = FOUNDRY_STORE.get_session(session_id)
+    if not receipts:
+        raise HTTPException(404, f"Session not found: {session_id}")
+    if fmt == "jsonl":
+        import json as _json
+        return {"data": "\n".join(_json.dumps(r, default=str) for r in receipts)}
+    return {"data": receipts}
+
+
+@app.delete("/session/{session_id}")
+async def session_delete(session_id: str, _key: dict = Depends(require_key)):
+    """Delete a session and its receipt chain."""
+    FOUNDRY_STORE.delete_session(session_id)
+    SESSION_META.pop(session_id, None)
+    _save_session_meta(SESSION_META)
+    return {"deleted": session_id}
+
+
+@app.get("/sessions")
+async def sessions_list(_key: dict = Depends(require_key)):
+    """List all sessions with stats."""
+    session_ids = FOUNDRY_STORE.list_sessions()
+    result = []
+    for sid in session_ids:
+        meta = SESSION_META.get(sid, {})
+        stats = _session_stats(sid)
+        result.append({"session_id": sid, **meta, **stats})
+    return {"count": len(result), "sessions": result}
+
+
 @app.get("/health")
 async def health():
     model_status = {}
@@ -663,11 +966,15 @@ async def health():
     if LEDGER_FILE.exists():
         with open(LEDGER_FILE) as f:
             total = sum(1 for line in f if line.strip())
+    session_ids = FOUNDRY_STORE.list_sessions()
+    total_turns = sum(_session_stats(sid)["turn_count"] for sid in session_ids)
     return {
         "status": "ok",
         "time": time.time(),
         "models": model_status,
         "total_prompts": total,
+        "session_count": len(session_ids),
+        "total_session_turns": total_turns,
     }
 
 
@@ -855,6 +1162,7 @@ AUDIT_HTML = """<!DOCTYPE html>
 <div class="nav">
   <a href="/routed-chat/">Routed Chat</a>
   <a href="/audit/" class="active">Audit</a>
+  <a href="/sessions/">Sessions</a>
   <a href="/">Dashboard</a>
 </div>
 
@@ -1146,6 +1454,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <div class="nav">
   <a href="/routed-chat/">Routed Chat</a>
   <a href="/audit/">Audit</a>
+  <a href="/sessions/">Sessions</a>
   <a href="/" class="active">Dashboard</a>
 </div>
 <h1>&#9877; <span>Helix Foundry</span></h1>
@@ -1199,6 +1508,185 @@ async def dashboard():
         rows = '<tr><td colspan="2">No prompts yet.</td></tr>'
 
     return DASHBOARD_HTML.replace("{rows}", rows)
+
+
+SESSIONS_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Helix Foundry — Sessions</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --text-dim: #8b949e;
+    --fact: #238636; --reasoned: #58a6ff; --hypothesis: #d29922;
+    --uncertain: #da3633; --conclusion: #8b6cef;
+    --accent: #58a6ff; --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+  .container { max-width: 900px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  h1 span { color: var(--accent); }
+  .subtitle { color: var(--text-dim); font-size: 13px; margin-bottom: 20px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 14px; color: var(--text-dim); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; }
+  .nav { display: flex; gap: 4px; margin-bottom: 20px; }
+  .nav a { color: var(--text-dim); text-decoration: none; padding: 4px 12px; border-radius: var(--radius); font-size: 13px; border: 1px solid var(--border); }
+  .nav a:hover, .nav a.active { color: var(--accent); border-color: var(--accent); background: #1a2332; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; }
+  th { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .mono { font-family: monospace; font-size: 11px; color: var(--text-dim); }
+  .drift-bar { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+  .drift-track { width: 50px; height: 5px; background: #21262d; border-radius: 3px; overflow: hidden; display: inline-block; }
+  .drift-fill { height: 100%; border-radius: 3px; }
+  .btn-del { background: none; border: 1px solid var(--uncertain); color: var(--uncertain); border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
+  .btn-del:hover { background: var(--uncertain); color: #fff; }
+  .empty { color: var(--text-dim); font-style: italic; font-size: 14px; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .receipt-row { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; font-size: 12px; }
+  .receipt-row .q { color: var(--accent); margin-bottom: 2px; }
+  .receipt-row .a { color: var(--text); white-space: pre-wrap; max-height: 80px; overflow: hidden; }
+  .receipt-row .meta { color: var(--text-dim); font-size: 10px; margin-top: 4px; font-family: monospace; }
+  #detail { display: none; }
+</style>
+</head>
+<body>
+<div class="container">
+<div class="nav">
+  <a href="/routed-chat/">Routed Chat</a>
+  <a href="/audit/">Audit</a>
+  <a href="/sessions/" class="active">Sessions</a>
+  <a href="/">Dashboard</a>
+</div>
+<h1>&#9877; <span>Helix Foundry</span> &mdash; Sessions</h1>
+<p class="subtitle">Active receipt chains. Each session is model-locked at creation; receipts are tamper-evident via chain_hash.</p>
+
+<div class="card" id="listCard">
+  <h2>All Sessions <span id="loadingSpinner" class="spinner" style="margin-left:8px;"></span></h2>
+  <div id="sessionList"><span class="empty">Loading...</span></div>
+</div>
+
+<div id="detail" class="card">
+  <h2 id="detailTitle">Session Detail</h2>
+  <div id="detailMeta" style="font-size:12px;color:var(--text-dim);margin-bottom:12px;"></div>
+  <div id="detailReceipts"></div>
+</div>
+
+</div>
+<script>
+let _apiKey = '';
+let _allSessions = [];
+
+async function initAuth() {
+  const stored = localStorage.getItem('foundry_api_key');
+  if (stored) {
+    const ok = await validateKey(stored);
+    if (ok) { _apiKey = stored; loadSessions(); return; }
+  }
+  window.location = '/routed-chat/';
+}
+
+async function validateKey(key) {
+  try {
+    const r = await fetch('/ping', {headers: {'X-API-Key': key}});
+    return r.ok;
+  } catch { return false; }
+}
+
+function driftColor(v) {
+  if (v < 0.15) return '#238636';
+  if (v < 0.35) return '#d29922';
+  return '#da3633';
+}
+
+async function loadSessions() {
+  try {
+    const resp = await fetch('/sessions', {headers: {'X-API-Key': _apiKey}});
+    const data = await resp.json();
+    _allSessions = data.sessions || [];
+    document.getElementById('loadingSpinner').style.display = 'none';
+    if (!_allSessions.length) {
+      document.getElementById('sessionList').innerHTML = '<span class="empty">No sessions yet. Start one from Routed Chat with Session mode enabled.</span>';
+      return;
+    }
+    let html = '<table><tr><th>Session ID</th><th>Model</th><th>Pool</th><th>Turns</th><th>Running drift</th><th>Last active</th><th></th></tr>';
+    for (const s of _allSessions) {
+      const dpct = Math.min(100, (s.running_drift||0)*100);
+      html += '<tr>' +
+        '<td><a href="#" onclick="showDetail(\\''+s.session_id+'\\');return false;" class="mono" style="color:var(--accent);">'+s.session_id.substring(0,16)+'…</a></td>' +
+        '<td>'+( s.label||'—')+'</td>' +
+        '<td>'+(s.pool||'—')+'</td>' +
+        '<td>'+s.turn_count+'</td>' +
+        '<td><span class="drift-bar"><span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+driftColor(s.running_drift||0)+'"></span></span> &gamma; '+(s.running_drift||0).toFixed(3)+'</span></td>' +
+        '<td class="mono">'+(s.last_activity||'—')+'</td>' +
+        '<td><button class="btn-del" onclick="deleteSession(\\''+s.session_id+'\\')">Delete</button></td>' +
+        '</tr>';
+    }
+    html += '</table>';
+    document.getElementById('sessionList').innerHTML = html;
+  } catch(e) {
+    document.getElementById('loadingSpinner').style.display = 'none';
+    document.getElementById('sessionList').innerHTML = '<span class="empty">Error loading sessions: '+e.message+'</span>';
+  }
+}
+
+async function showDetail(session_id) {
+  document.getElementById('detail').style.display = 'block';
+  document.getElementById('detailTitle').textContent = 'Session: ' + session_id.substring(0,16) + '…';
+  document.getElementById('detailReceipts').innerHTML = '<span class="spinner"></span>';
+  try {
+    const resp = await fetch('/session/' + session_id, {headers: {'X-API-Key': _apiKey}});
+    const data = await resp.json();
+    document.getElementById('detailMeta').innerHTML =
+      'Model: <strong>'+(data.label||'?')+'</strong> &middot; Pool: '+(data.pool||'?')+
+      ' &middot; Turns: '+data.turn_count+' &middot; Running drift: &gamma; '+(data.running_drift||0).toFixed(3)+
+      ' &middot; Created: '+(data.created||'?');
+    if (!data.receipts || !data.receipts.length) {
+      document.getElementById('detailReceipts').innerHTML = '<span class="empty">No receipts.</span>';
+      return;
+    }
+    let html = '';
+    for (const r of data.receipts) {
+      html += '<div class="receipt-row">' +
+        '<div class="q">Turn '+r.turn+' &rarr; '+r.user_message.substring(0,120)+'</div>' +
+        '<div class="a">'+r.assistant_response.substring(0,300)+(r.assistant_response.length>300?'…':'')+'</div>' +
+        '<div class="meta">&gamma; '+r.drift_score.toFixed(3)+' '+r.drift_tier+
+        ' &middot; hash: '+r.hash.substring(0,16)+
+        ' &middot; chain: '+r.chain_hash.substring(0,16)+
+        ' &middot; '+r.timestamp+'</div>' +
+        '</div>';
+    }
+    document.getElementById('detailReceipts').innerHTML = html;
+  } catch(e) {
+    document.getElementById('detailReceipts').innerHTML = '<span class="empty">Error: '+e.message+'</span>';
+  }
+  document.getElementById('detail').scrollIntoView({behavior:'smooth'});
+}
+
+async function deleteSession(session_id) {
+  if (!confirm('Delete session ' + session_id.substring(0,16) + '…?')) return;
+  try {
+    await fetch('/session/' + session_id, {method: 'DELETE', headers: {'X-API-Key': _apiKey}});
+    await loadSessions();
+    document.getElementById('detail').style.display = 'none';
+  } catch(e) { alert('Delete failed: ' + e.message); }
+}
+
+initAuth();
+</script>
+</body></html>"""
+
+
+@app.get("/sessions", response_class=HTMLResponse)
+@app.get("/sessions/", response_class=HTMLResponse)
+@app.head("/sessions")
+@app.head("/sessions/")
+async def sessions_page():
+    return SESSIONS_HTML
 
 
 if __name__ == "__main__":
