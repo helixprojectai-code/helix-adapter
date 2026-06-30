@@ -36,6 +36,7 @@ from typing import Any, Callable, Optional
 
 from .drift import compute_drift
 from .markers import extract_claims
+from .merkle import MerkleTree
 from .prompt import CONSTITUTIONAL_PROMPT, system_messages
 from .receipt import make_receipt
 from .store import InMemoryReceiptStore, ReceiptStore
@@ -121,6 +122,7 @@ class HelixSession:
         self._context: list[dict] = _context or []
         self._turn = _turn
         self._last_chain_hash = _last_chain_hash
+        self._merkle: MerkleTree = MerkleTree()
 
         if cedar_policy and hasattr(cedar_policy, "is_fail_closed") and cedar_policy.is_fail_closed:
             warnings.warn(
@@ -156,7 +158,7 @@ class HelixSession:
             context.append({"role": "assistant", "content": r["assistant_response"]})
 
         last = receipts[-1]
-        return cls(
+        instance = cls(
             model_fn=model_fn,
             model_name=model_name,
             drift_threshold=drift_threshold,
@@ -167,6 +169,8 @@ class HelixSession:
             _turn=last["turn"] + 1,
             _last_chain_hash=last["chain_hash"],
         )
+        instance._merkle = MerkleTree.from_leaves([r["hash"] for r in receipts])
+        return instance
 
     # ------------------------------------------------------------------ #
     # Core — send
@@ -240,7 +244,9 @@ class HelixSession:
             chain_hash=chain_hash,
         )
 
-        self.store.save(receipt.to_dict())
+        merkle_root = self._merkle.append(receipt_hash)
+
+        self.store.save({**receipt.to_dict(), "merkle_root": merkle_root})
         self._last_chain_hash = chain_hash
         self._turn += 1
 
@@ -272,6 +278,16 @@ class HelixSession:
             return 0.0
         total_drift = sum(r.get("drift_score", 0.0) for r in receipts)
         return round(total_drift / len(receipts), 4)
+
+    @property
+    def merkle_root(self) -> str | None:
+        return self._merkle.root
+
+    def merkle_proof(self, turn: int) -> dict:
+        return self._merkle.proof(turn)
+
+    def merkle_all_roots(self) -> list[dict]:
+        return self._merkle.all_roots()
 
     @property
     def turn(self) -> int:
