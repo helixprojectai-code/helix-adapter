@@ -200,7 +200,7 @@ def build_adapter(model_name: str):
             "messages": messages,
             "temperature": cfg["temperature"],
         }
-        if "azure" in cfg["endpoint"]:
+        if "azure" in cfg["endpoint"] and "Mistral" not in depl:
             kwargs["max_completion_tokens"] = 4096
         else:
             kwargs["max_tokens"] = 4096
@@ -231,7 +231,7 @@ def build_session(model_name: str, session_id: str | None = None) -> tuple["Heli
             "messages": messages,
             "temperature": cfg["temperature"],
         }
-        if "azure" in cfg["endpoint"]:
+        if "azure" in cfg["endpoint"] and "Mistral" not in depl:
             kwargs["max_completion_tokens"] = 4096
         else:
             kwargs["max_tokens"] = 4096
