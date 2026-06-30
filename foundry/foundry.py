@@ -536,7 +536,6 @@ async function send() {
     if (_sessionMode) {
       // Start session on first message
       if (!_sessionId) {
-        document.getElementById('loading').querySelector ? null : null;
         const sess = await _startSession(action);
         _sessionId = sess.session_id;
         _sessionModel = sess.label;
@@ -927,8 +926,7 @@ async def session_export(session_id: str, fmt: str = "json", _key: dict = Depend
     if not receipts:
         raise HTTPException(404, f"Session not found: {session_id}")
     if fmt == "jsonl":
-        import json as _json
-        return {"data": "\n".join(_json.dumps(r, default=str) for r in receipts)}
+        return {"data": "\n".join(json.dumps(r, default=str) for r in receipts)}
     return {"data": receipts}
 
 
@@ -1681,9 +1679,7 @@ initAuth();
 </body></html>"""
 
 
-@app.get("/sessions", response_class=HTMLResponse)
 @app.get("/sessions/", response_class=HTMLResponse)
-@app.head("/sessions")
 @app.head("/sessions/")
 async def sessions_page():
     return SESSIONS_HTML
