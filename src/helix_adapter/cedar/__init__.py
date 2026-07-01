@@ -11,8 +11,8 @@ Architecture:
 RFC 0003: Unified Policy Gating — Dual-Gate Containment
 """
 
-from .policy import CedarDecision, CedarGate, CedarPolicy, ActionReceipt, load_policy
-from .hooks import PreToolUseHook, PostToolUseHook
+from .hooks import PostToolUseHook, PreToolUseHook
+from .policy import ActionReceipt, CedarDecision, CedarGate, CedarPolicy, load_policy
 from .schema import HELIX_SCHEMA, generate_schema_from_tools
 
 __all__ = [

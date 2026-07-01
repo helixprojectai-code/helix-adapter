@@ -14,9 +14,7 @@ class PreToolUseHook:
     def __init__(self, policy: "CedarPolicy"):
         self._policy = policy
 
-    def run(
-        self, tool_call: Dict[str, Any]
-    ) -> Tuple[bool, str, Optional["CedarDecision"]]:
+    def run(self, tool_call: Dict[str, Any]) -> Tuple[bool, str, Optional["CedarDecision"]]:
         principal = tool_call.get("principal", 'Helix::Agent::"default"')
         action = tool_call.get("action", 'Helix::Action::"unknown"')
         resource = tool_call.get("resource", 'Helix::Environment::"default"')

@@ -19,7 +19,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 HERE = Path(__file__).parent
 DEFAULT_POLICY = HERE / "policies" / "helix.policy"
@@ -30,9 +30,11 @@ DEFAULT_SCHEMA = HERE / "policies" / "helix.schema"
 # Decision & Receipt Types
 # =============================================================================
 
+
 @dataclass
 class CedarDecision:
     """Result of a Cedar policy evaluation."""
+
     authorized: bool
     reason: str
     raw_result: Any = None
@@ -43,6 +45,7 @@ class CedarDecision:
 @dataclass
 class ActionReceipt:
     """Tamper-evident receipt for an action attempt."""
+
     exchange_id: str
     action: str
     authorized: bool
@@ -57,9 +60,11 @@ class ActionReceipt:
 # Internal helpers
 # =============================================================================
 
+
 def _parse_uid(s: str):
     """Parse a Cedar entity UID string like 'Helix::Agent::"agent-123"' into an EntityUid."""
     from cedar import EntityUid
+
     m = re.match(r'^(.*)::"([^"]*)"$', s)
     if m:
         return EntityUid.from_json(json.dumps({"type": m.group(1), "id": m.group(2)}))
@@ -69,6 +74,7 @@ def _parse_uid(s: str):
 def _load_policies(policy_text: str):
     """Split a multi-policy Cedar file and load into a PolicySet."""
     from cedar import Policy, PolicySet
+
     ps = PolicySet()
     # Split only on permit/forbid at the start of a line (after optional indent).
     # Using ^[ \t]* with (?m) prevents comment text like
@@ -76,7 +82,8 @@ def _load_policies(policy_text: str):
     # preserves https:// URLs inside string literals.
     raw_blocks = re.split(r"(?m)(?=^[ \t]*(?:permit|forbid)\s*\()", policy_text)
     raw_blocks = [
-        b.strip() for b in raw_blocks
+        b.strip()
+        for b in raw_blocks
         if b.strip() and (b.strip().startswith("permit") or b.strip().startswith("forbid"))
     ]
     errors = []
@@ -97,6 +104,7 @@ def load_policy(path: Optional[Path] = None) -> str:
 # =============================================================================
 # Core Cedar Policy Engine
 # =============================================================================
+
 
 class CedarPolicy:
     """Cedar policy gate using native cedar Python bindings.
@@ -181,6 +189,7 @@ class CedarPolicy:
         if self.schema_text:
             try:
                 from cedar import Schema
+
                 schema = Schema.from_cedarschema(self.schema_text)
                 result = schema.validate_policyset(self._policy_set)
                 if not result.valid:
@@ -299,9 +308,7 @@ class CedarPolicy:
             "timestamp": decision.evaluated_at,
         }
 
-        receipt_hash = hashlib.sha256(
-            json.dumps(payload, sort_keys=True).encode()
-        ).hexdigest()
+        receipt_hash = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
         return ActionReceipt(
             exchange_id=exchange_id,
@@ -318,6 +325,7 @@ class CedarPolicy:
 # =============================================================================
 # Backward-compatible thin wrapper
 # =============================================================================
+
 
 class CedarGate:
     """Thin backward-compatible wrapper around CedarPolicy."""

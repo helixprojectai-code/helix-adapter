@@ -18,7 +18,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-
 # =============================================================================
 # Base Helix Schema (RFC 0003 Dual-Gate Foundation)
 # =============================================================================
@@ -120,6 +119,7 @@ HELIX_SCHEMA = HELIX_BASE_SCHEMA
 # Schema Generation Helpers
 # =============================================================================
 
+
 def generate_schema_from_tools(
     tool_definitions: List[Dict[str, Any]],
     include_governance: bool = True,
@@ -167,10 +167,7 @@ def generate_schema_from_tools(
 
     entity_lines = "\n    ".join(f"entity {e};" for e in sorted(entities))
     schema = (
-        f"namespace {namespace} {{\n\n"
-        f"    {entity_lines}\n\n"
-        + "\n\n".join(actions)
-        + "\n}"
+        f"namespace {namespace} {{\n\n" f"    {entity_lines}\n\n" + "\n\n".join(actions) + "\n}"
     )
 
     if include_governance:
@@ -199,6 +196,7 @@ namespace Helix_Governance {
 # =============================================================================
 # Advanced Schema Builder
 # =============================================================================
+
 
 @dataclass
 class SchemaBuilder:

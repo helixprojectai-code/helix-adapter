@@ -33,7 +33,7 @@ from .receipt import make_receipt
 # Cedar integration (optional)
 try:
     from .cedar import CedarPolicy
-    from .cedar.hooks import PreToolUseHook, PostToolUseHook
+    from .cedar.hooks import PostToolUseHook, PreToolUseHook
 except ImportError:
     CedarPolicy = None
     PreToolUseHook = None

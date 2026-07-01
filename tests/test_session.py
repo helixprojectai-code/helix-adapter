@@ -29,8 +29,6 @@ from helix_adapter import (
     JointReceipt,
     SQLiteReceiptStore,
 )
-from helix_adapter.store import ReceiptStore
-
 
 # ─────────────────────────────────────────────
 # Fixtures
@@ -86,6 +84,7 @@ def session_sql(sql_store):
 # DriftThreshold
 # ─────────────────────────────────────────────
 
+
 class TestDriftThreshold:
     def test_defaults(self):
         t = DriftThreshold()
@@ -136,13 +135,23 @@ class TestDriftThreshold:
 # InMemoryReceiptStore
 # ─────────────────────────────────────────────
 
+
 class TestInMemoryReceiptStore:
     def test_save_and_get(self, mem_store):
-        receipt = {"exchange_id": "ex1", "session_id": "s1", "turn": 0,
-                   "timestamp": "2026-06-29", "hash": "h1", "chain_hash": "c1",
-                   "drift_score": 0.05, "drift_tier": "green",
-                   "user_message": "hi", "assistant_response": "hello",
-                   "claims": [], "model": "test"}
+        receipt = {
+            "exchange_id": "ex1",
+            "session_id": "s1",
+            "turn": 0,
+            "timestamp": "2026-06-29",
+            "hash": "h1",
+            "chain_hash": "c1",
+            "drift_score": 0.05,
+            "drift_tier": "green",
+            "user_message": "hi",
+            "assistant_response": "hello",
+            "claims": [],
+            "model": "test",
+        }
         mem_store.save(receipt)
         result = mem_store.get_session("s1")
         assert len(result) == 1
@@ -150,23 +159,48 @@ class TestInMemoryReceiptStore:
 
     def test_multiple_turns_ordered(self, mem_store):
         for i in range(5):
-            mem_store.save({"exchange_id": f"ex{i}", "session_id": "s1", "turn": i,
-                            "timestamp": "t", "hash": f"h{i}", "chain_hash": f"c{i}",
-                            "drift_score": 0.0, "drift_tier": "green"})
+            mem_store.save(
+                {
+                    "exchange_id": f"ex{i}",
+                    "session_id": "s1",
+                    "turn": i,
+                    "timestamp": "t",
+                    "hash": f"h{i}",
+                    "chain_hash": f"c{i}",
+                    "drift_score": 0.0,
+                    "drift_tier": "green",
+                }
+            )
         results = mem_store.get_session("s1")
         turns = [r["turn"] for r in results]
         assert turns == list(range(5))
 
     def test_list_sessions(self, mem_store):
         for sid in ["s1", "s2", "s3"]:
-            mem_store.save({"exchange_id": sid, "session_id": sid, "turn": 0,
-                            "timestamp": "t", "hash": "h", "chain_hash": "c"})
+            mem_store.save(
+                {
+                    "exchange_id": sid,
+                    "session_id": sid,
+                    "turn": 0,
+                    "timestamp": "t",
+                    "hash": "h",
+                    "chain_hash": "c",
+                }
+            )
         sessions = mem_store.list_sessions()
         assert set(sessions) == {"s1", "s2", "s3"}
 
     def test_delete_session(self, mem_store):
-        mem_store.save({"exchange_id": "ex1", "session_id": "s1", "turn": 0,
-                        "timestamp": "t", "hash": "h", "chain_hash": "c"})
+        mem_store.save(
+            {
+                "exchange_id": "ex1",
+                "session_id": "s1",
+                "turn": 0,
+                "timestamp": "t",
+                "hash": "h",
+                "chain_hash": "c",
+            }
+        )
         mem_store.delete_session("s1")
         assert mem_store.get_session("s1") == []
         assert "s1" not in mem_store.list_sessions()
@@ -179,27 +213,59 @@ class TestInMemoryReceiptStore:
 
     def test_export_jsonl(self, mem_store):
         for i in range(3):
-            mem_store.save({"exchange_id": f"e{i}", "session_id": "s1", "turn": i,
-                            "timestamp": "t", "hash": "h", "chain_hash": "c"})
+            mem_store.save(
+                {
+                    "exchange_id": f"e{i}",
+                    "session_id": "s1",
+                    "turn": i,
+                    "timestamp": "t",
+                    "hash": "h",
+                    "chain_hash": "c",
+                }
+            )
         export = mem_store.export_session("s1", fmt="jsonl")
-        lines = [l for l in export.splitlines() if l.strip()]
+        lines = [ln for ln in export.splitlines() if ln.strip()]
         assert len(lines) == 3
         for line in lines:
             json.loads(line)  # each line is valid JSON
 
     def test_export_json(self, mem_store):
-        mem_store.save({"exchange_id": "e1", "session_id": "s1", "turn": 0,
-                        "timestamp": "t", "hash": "h", "chain_hash": "c"})
+        mem_store.save(
+            {
+                "exchange_id": "e1",
+                "session_id": "s1",
+                "turn": 0,
+                "timestamp": "t",
+                "hash": "h",
+                "chain_hash": "c",
+            }
+        )
         export = mem_store.export_session("s1", fmt="json")
         data = json.loads(export)
         assert isinstance(data, list)
         assert len(data) == 1
 
     def test_multiple_sessions_isolated(self, mem_store):
-        mem_store.save({"exchange_id": "a1", "session_id": "A", "turn": 0,
-                        "timestamp": "t", "hash": "h", "chain_hash": "c"})
-        mem_store.save({"exchange_id": "b1", "session_id": "B", "turn": 0,
-                        "timestamp": "t", "hash": "h", "chain_hash": "c"})
+        mem_store.save(
+            {
+                "exchange_id": "a1",
+                "session_id": "A",
+                "turn": 0,
+                "timestamp": "t",
+                "hash": "h",
+                "chain_hash": "c",
+            }
+        )
+        mem_store.save(
+            {
+                "exchange_id": "b1",
+                "session_id": "B",
+                "turn": 0,
+                "timestamp": "t",
+                "hash": "h",
+                "chain_hash": "c",
+            }
+        )
         assert len(mem_store.get_session("A")) == 1
         assert len(mem_store.get_session("B")) == 1
         mem_store.delete_session("A")
@@ -211,13 +277,23 @@ class TestInMemoryReceiptStore:
 # SQLiteReceiptStore
 # ─────────────────────────────────────────────
 
+
 class TestSQLiteReceiptStore:
     def test_save_and_get(self, sql_store):
-        receipt = {"exchange_id": "ex1", "session_id": "s1", "turn": 0,
-                   "timestamp": "2026-06-29", "hash": "h1", "chain_hash": "c1",
-                   "drift_score": 0.05, "drift_tier": "green",
-                   "user_message": "hi", "assistant_response": "hello",
-                   "claims": [], "model": "test"}
+        receipt = {
+            "exchange_id": "ex1",
+            "session_id": "s1",
+            "turn": 0,
+            "timestamp": "2026-06-29",
+            "hash": "h1",
+            "chain_hash": "c1",
+            "drift_score": 0.05,
+            "drift_tier": "green",
+            "user_message": "hi",
+            "assistant_response": "hello",
+            "claims": [],
+            "model": "test",
+        }
         sql_store.save(receipt)
         result = sql_store.get_session("s1")
         assert len(result) == 1
@@ -225,9 +301,18 @@ class TestSQLiteReceiptStore:
 
     def test_persistence(self, db_path):
         store1 = SQLiteReceiptStore(path=db_path)
-        store1.save({"exchange_id": "ex1", "session_id": "s1", "turn": 0,
-                     "timestamp": "t", "hash": "h", "chain_hash": "c",
-                     "drift_score": 0.1, "drift_tier": "yellow"})
+        store1.save(
+            {
+                "exchange_id": "ex1",
+                "session_id": "s1",
+                "turn": 0,
+                "timestamp": "t",
+                "hash": "h",
+                "chain_hash": "c",
+                "drift_score": 0.1,
+                "drift_tier": "yellow",
+            }
+        )
         # Re-open same DB
         store2 = SQLiteReceiptStore(path=db_path)
         result = store2.get_session("s1")
@@ -236,41 +321,84 @@ class TestSQLiteReceiptStore:
 
     def test_multiple_turns_ordered(self, sql_store):
         for i in range(5):
-            sql_store.save({"exchange_id": f"ex{i}", "session_id": "s1", "turn": i,
-                            "timestamp": "t", "hash": f"h{i}", "chain_hash": f"c{i}",
-                            "drift_score": 0.0, "drift_tier": "green"})
+            sql_store.save(
+                {
+                    "exchange_id": f"ex{i}",
+                    "session_id": "s1",
+                    "turn": i,
+                    "timestamp": "t",
+                    "hash": f"h{i}",
+                    "chain_hash": f"c{i}",
+                    "drift_score": 0.0,
+                    "drift_tier": "green",
+                }
+            )
         results = sql_store.get_session("s1")
         turns = [r["turn"] for r in results]
         assert turns == list(range(5))
 
     def test_list_sessions(self, sql_store):
         for sid in ["s1", "s2", "s3"]:
-            sql_store.save({"exchange_id": sid, "session_id": sid, "turn": 0,
-                            "timestamp": "t", "hash": "h", "chain_hash": "c",
-                            "drift_score": 0.0, "drift_tier": "green"})
+            sql_store.save(
+                {
+                    "exchange_id": sid,
+                    "session_id": sid,
+                    "turn": 0,
+                    "timestamp": "t",
+                    "hash": "h",
+                    "chain_hash": "c",
+                    "drift_score": 0.0,
+                    "drift_tier": "green",
+                }
+            )
         sessions = sql_store.list_sessions()
         assert set(sessions) == {"s1", "s2", "s3"}
 
     def test_delete_session(self, sql_store):
-        sql_store.save({"exchange_id": "ex1", "session_id": "s1", "turn": 0,
-                        "timestamp": "t", "hash": "h", "chain_hash": "c",
-                        "drift_score": 0.0, "drift_tier": "green"})
+        sql_store.save(
+            {
+                "exchange_id": "ex1",
+                "session_id": "s1",
+                "turn": 0,
+                "timestamp": "t",
+                "hash": "h",
+                "chain_hash": "c",
+                "drift_score": 0.0,
+                "drift_tier": "green",
+            }
+        )
         sql_store.delete_session("s1")
         assert sql_store.get_session("s1") == []
 
     def test_export_jsonl(self, sql_store):
         for i in range(3):
-            sql_store.save({"exchange_id": f"e{i}", "session_id": "s1", "turn": i,
-                            "timestamp": "t", "hash": "h", "chain_hash": "c",
-                            "drift_score": 0.0, "drift_tier": "green"})
+            sql_store.save(
+                {
+                    "exchange_id": f"e{i}",
+                    "session_id": "s1",
+                    "turn": i,
+                    "timestamp": "t",
+                    "hash": "h",
+                    "chain_hash": "c",
+                    "drift_score": 0.0,
+                    "drift_tier": "green",
+                }
+            )
         export = sql_store.export_session("s1", fmt="jsonl")
-        lines = [l for l in export.splitlines() if l.strip()]
+        lines = [ln for ln in export.splitlines() if ln.strip()]
         assert len(lines) == 3
 
     def test_upsert_same_exchange_id(self, sql_store):
-        r = {"exchange_id": "ex1", "session_id": "s1", "turn": 0,
-             "timestamp": "t", "hash": "h1", "chain_hash": "c1",
-             "drift_score": 0.0, "drift_tier": "green"}
+        r = {
+            "exchange_id": "ex1",
+            "session_id": "s1",
+            "turn": 0,
+            "timestamp": "t",
+            "hash": "h1",
+            "chain_hash": "c1",
+            "drift_score": 0.0,
+            "drift_tier": "green",
+        }
         sql_store.save(r)
         r["hash"] = "h2"
         sql_store.save(r)  # should not raise, upsert
@@ -281,12 +409,20 @@ class TestSQLiteReceiptStore:
 # Store interface contract — both stores behave identically
 # ─────────────────────────────────────────────
 
+
 @pytest.mark.parametrize("store_fixture", ["mem_store", "sql_store"])
 class TestStoreContract:
     def _receipt(self, sid, turn, eid=None):
-        return {"exchange_id": eid or f"{sid}-{turn}", "session_id": sid, "turn": turn,
-                "timestamp": "t", "hash": f"h{turn}", "chain_hash": f"c{turn}",
-                "drift_score": 0.0, "drift_tier": "green"}
+        return {
+            "exchange_id": eid or f"{sid}-{turn}",
+            "session_id": sid,
+            "turn": turn,
+            "timestamp": "t",
+            "hash": f"h{turn}",
+            "chain_hash": f"c{turn}",
+            "drift_score": 0.0,
+            "drift_tier": "green",
+        }
 
     def test_empty_store(self, store_fixture, request):
         store = request.getfixturevalue(store_fixture)
@@ -309,6 +445,7 @@ class TestStoreContract:
 # ─────────────────────────────────────────────
 # HelixSession — core behavior
 # ─────────────────────────────────────────────
+
 
 class TestHelixSession:
     def test_session_id_generated(self, session_mem):
@@ -413,6 +550,7 @@ class TestHelixSession:
 # chain_hash integrity
 # ─────────────────────────────────────────────
 
+
 class TestChainHash:
     def test_chain_hash_changes_each_turn(self, session_mem):
         r0 = session_mem.send("Turn 0")
@@ -438,7 +576,7 @@ class TestChainHash:
 
     def test_tamper_breaks_chain(self):
         s = HelixSession(model_fn=mock_model_labeled)
-        r0 = s.send("Turn 0")
+        _ = s.send("Turn 0")
         r1 = s.send("Turn 1")
 
         # Tamper: recalculate what r1.chain_hash would be with a different r0 hash
@@ -464,6 +602,7 @@ class TestChainHash:
 # ─────────────────────────────────────────────
 # Session lifecycle — clear / delete / export
 # ─────────────────────────────────────────────
+
 
 class TestSessionLifecycle:
     def test_clear_resets_turn(self):
@@ -511,7 +650,7 @@ class TestSessionLifecycle:
         s.send("Turn 0")
         s.send("Turn 1")
         export = s.export()
-        lines = [l for l in export.splitlines() if l.strip()]
+        lines = [ln for ln in export.splitlines() if ln.strip()]
         assert len(lines) == 2
         for line in lines:
             data = json.loads(line)
@@ -552,6 +691,7 @@ class TestSessionLifecycle:
 # HelixSession.resume
 # ─────────────────────────────────────────────
 
+
 class TestHelixSessionResume:
     def test_resume_restores_turn_count(self, db_path):
         store = SQLiteReceiptStore(path=db_path)
@@ -566,7 +706,7 @@ class TestHelixSessionResume:
     def test_resume_continues_chain(self, db_path):
         store = SQLiteReceiptStore(path=db_path)
         s = HelixSession(model_fn=mock_model_labeled, store=store)
-        r0 = s.send("Turn 0")
+        _ = s.send("Turn 0")
         r1 = s.send("Turn 1")
         sid = s.id
 
@@ -626,6 +766,7 @@ class TestHelixSessionResume:
 # JointReceipt
 # ─────────────────────────────────────────────
 
+
 class TestJointReceipt:
     def test_to_dict_roundtrip(self, session_mem):
         r = session_mem.send("Hello")
@@ -640,11 +781,24 @@ class TestJointReceipt:
     def test_receipt_fields_complete(self, session_mem):
         r = session_mem.send("Hello")
         required = [
-            "exchange_id", "session_id", "turn", "timestamp", "model",
-            "user_message", "assistant_response", "claims",
-            "drift_score", "drift_tier", "drift_method",
-            "cedar_action", "cedar_authorized", "cedar_policy_hash",
-            "cedar_reason", "cedar_status", "hash", "chain_hash",
+            "exchange_id",
+            "session_id",
+            "turn",
+            "timestamp",
+            "model",
+            "user_message",
+            "assistant_response",
+            "claims",
+            "drift_score",
+            "drift_tier",
+            "drift_method",
+            "cedar_action",
+            "cedar_authorized",
+            "cedar_policy_hash",
+            "cedar_reason",
+            "cedar_status",
+            "hash",
+            "chain_hash",
         ]
         d = r.to_dict()
         for field in required:
@@ -678,6 +832,7 @@ class TestJointReceipt:
 # Context manager
 # ─────────────────────────────────────────────
 
+
 class TestContextManager:
     def test_context_manager_basic(self):
         with HelixSession(model_fn=mock_model_labeled) as s:
@@ -705,6 +860,7 @@ class TestContextManager:
 # Top-level import
 # ─────────────────────────────────────────────
 
+
 class TestPublicAPI:
     def test_imports_from_top_level(self):
         from helix_adapter import (
@@ -714,6 +870,7 @@ class TestPublicAPI:
             JointReceipt,
             SQLiteReceiptStore,
         )
+
         assert HelixSession is not None
         assert JointReceipt is not None
         assert DriftThreshold is not None

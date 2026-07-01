@@ -7,7 +7,9 @@ import os
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(os.environ.get("FOUNDRY_KEYS_DB", Path.home() / "helix" / "keys" / "foundry_keys.db"))
+DB_PATH = Path(
+    os.environ.get("FOUNDRY_KEYS_DB", Path.home() / "helix" / "keys" / "foundry_keys.db")
+)
 
 
 def get_conn() -> sqlite3.Connection:

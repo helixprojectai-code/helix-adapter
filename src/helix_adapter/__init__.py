@@ -13,9 +13,9 @@ GPT-4o, Claude, or a local Llama without changing a line.
 from .adapter import HelixAdapter
 from .drift import compute_drift
 from .markers import detect_nonstandard_markers, extract_claims, validate_response
+from .merkle import MerkleTree
 from .prompt import CONSTITUTIONAL_PROMPT, MARKERS
 from .receipt import make_receipt
-from .merkle import MerkleTree
 from .session import DriftThreshold, HelixSession, JointReceipt
 from .store import InMemoryReceiptStore, SQLiteReceiptStore
 
