@@ -27,7 +27,6 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
-
 from foundry_auth import require_key
 from openai import OpenAI
 from pydantic import BaseModel
@@ -118,22 +117,39 @@ def cedar_route(context: dict) -> dict:
         # No policy matched — fall back to static routing
         action = context.get("action_type", "default")
         model = ACTION_MODEL_MAP.get(action, "deepseek-4-pro")
-        return {"model": model, "pool": "static", "policy_hash": "", "reason": "no Cedar policy matched — using static map"}
+        return {
+            "model": model,
+            "pool": "static",
+            "policy_hash": "",
+            "reason": "no Cedar policy matched — using static map",
+        }
 
     except ImportError:
         # Cedar not installed — fall back to static routing
         action = context.get("action_type", "default")
         model = ACTION_MODEL_MAP.get(action, "deepseek-4-pro")
-        return {"model": model, "pool": "static", "policy_hash": "", "reason": "cedar_python unavailable — using static map"}
+        return {
+            "model": model,
+            "pool": "static",
+            "policy_hash": "",
+            "reason": "cedar_python unavailable — using static map",
+        }
 
 
 # Legacy static map — used when Cedar is unavailable
 ACTION_MODEL_MAP = {
-    "bash": "grok-4.3", "execute": "grok-4.3", "api_call": "grok-4.3",
-    "analyze": "deepseek-4-pro", "search": "deepseek-4-pro", "reason": "deepseek-4-pro",
-    "write_file": "gpt-5.4-nano", "edit_file": "gpt-5.4-nano",
-    "apply_patch": "gpt-5.4-nano", "summarize": "gpt-5.4-nano",
-    "translate": "mistral-large-3", "classify": "mistral-large-3",
+    "bash": "grok-4.3",
+    "execute": "grok-4.3",
+    "api_call": "grok-4.3",
+    "analyze": "deepseek-4-pro",
+    "search": "deepseek-4-pro",
+    "reason": "deepseek-4-pro",
+    "write_file": "gpt-5.4-nano",
+    "edit_file": "gpt-5.4-nano",
+    "apply_patch": "gpt-5.4-nano",
+    "summarize": "gpt-5.4-nano",
+    "translate": "mistral-large-3",
+    "classify": "mistral-large-3",
     "default": "deepseek-4-pro",
 }
 
@@ -810,6 +826,7 @@ async def routed_chat_ledger(limit: int = 20, _key: dict = Depends(require_key))
 
 # ── Session Endpoints ──
 
+
 def _session_stats(session_id: str) -> dict:
     receipts = FOUNDRY_STORE.get_session(session_id)
     if not receipts:
@@ -823,7 +840,9 @@ def _session_stats(session_id: str) -> dict:
 
 
 @app.post("/session/start")
-async def session_start(req: SessionStartRequest, request: Request, _key: dict = Depends(require_key)):
+async def session_start(
+    req: SessionStartRequest, request: Request, _key: dict = Depends(require_key)
+):
     """Cedar-route context, commit model, create session. Returns session_id."""
     _check_rate_limit(request)
     context = {
@@ -859,7 +878,9 @@ async def session_start(req: SessionStartRequest, request: Request, _key: dict =
 
 
 @app.post("/session/{session_id}/send")
-async def session_send(session_id: str, req: SessionSendRequest, request: Request, _key: dict = Depends(require_key)):
+async def session_send(
+    session_id: str, req: SessionSendRequest, request: Request, _key: dict = Depends(require_key)
+):
     """Send a turn to an existing session. Returns JointReceipt fields."""
     _check_rate_limit(request)
     if not req.message.strip():
@@ -875,7 +896,12 @@ async def session_send(session_id: str, req: SessionSendRequest, request: Reques
             (k for k, v in MODELS.items() if v["label"] == stored_label),
             "deepseek-4-pro",
         )
-        meta = {"model_name": model_name, "label": stored_label, "pool": "unknown", "policy_hash": ""}
+        meta = {
+            "model_name": model_name,
+            "label": stored_label,
+            "pool": "unknown",
+            "policy_hash": "",
+        }
     try:
         session, label = build_session(meta["model_name"], session_id=session_id)
     except ValueError as e:
@@ -912,6 +938,7 @@ async def session_get(session_id: str, _key: dict = Depends(require_key)):
         raise HTTPException(404, f"Session not found: {session_id}")
     stats = _session_stats(session_id)
     from helix_adapter.merkle import MerkleTree
+
     tree = MerkleTree.from_leaves([r["hash"] for r in receipts]) if receipts else None
     return {
         "session_id": session_id,
@@ -949,6 +976,7 @@ async def session_merkle(session_id: str, _key: dict = Depends(require_key)):
     if not receipts:
         raise HTTPException(404, f"Session not found: {session_id}")
     from helix_adapter.merkle import MerkleTree
+
     tree = MerkleTree.from_leaves([r["hash"] for r in receipts])
     return {
         "session_id": session_id,
@@ -965,6 +993,7 @@ async def session_merkle_proof(session_id: str, turn: int, _key: dict = Depends(
     if not receipts:
         raise HTTPException(404, f"Session not found: {session_id}")
     from helix_adapter.merkle import MerkleTree
+
     tree = MerkleTree.from_leaves([r["hash"] for r in receipts])
     try:
         proof = tree.proof(turn)
@@ -1013,9 +1042,12 @@ async def health():
 
 # ── Constitutional Audit ──
 
+
 class AuditRequest(BaseModel):
     text: str
-    prompt: str = ""  # original prompt — if provided, runs through Helix adapter for baseline comparison
+    prompt: str = (
+        ""  # original prompt — if provided, runs through Helix adapter for baseline comparison
+    )
 
 
 @app.post("/audit")
@@ -1023,12 +1055,12 @@ async def audit(req: AuditRequest, request: Request, _key: dict = Depends(requir
     """Score an arbitrary LLM response through the Helix constitutional lens."""
     if req.prompt:
         _check_rate_limit(request)
-    from helix_adapter.markers import extract_claims, count_claims, detect_nonstandard_markers, validate_response
-    from helix_adapter.drift import compute_drift, estimate_statements
+    from helix_adapter.drift import estimate_statements
+    from helix_adapter.markers import count_claims, detect_nonstandard_markers, validate_response
 
     text = req.text
     prompt = req.prompt.strip() if req.prompt else ""
-    
+
     # If prompt provided, run through Helix adapter for baseline comparison
     baseline = None
     if prompt:
@@ -1752,5 +1784,6 @@ async def sessions_page():
 
 if __name__ == "__main__":
     import uvicorn
+
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8800
     uvicorn.run(app, host="0.0.0.0", port=port)

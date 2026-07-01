@@ -9,10 +9,10 @@ import pytest
 
 from helix_adapter.cedar.policy import ActionReceipt, CedarDecision, CedarPolicy
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def policy():
@@ -28,6 +28,7 @@ def policy():
 # ---------------------------------------------------------------------------
 # Loader
 # ---------------------------------------------------------------------------
+
 
 def test_policy_loads():
     try:
@@ -64,8 +65,8 @@ def test_strict_mode_raises_on_bad_policy(tmp_path):
 # ---------------------------------------------------------------------------
 
 RESPOND_PRINCIPAL = 'Helix::Agent::"agent-001"'
-RESPOND_ACTION    = 'Helix_Governance::Action::"respond"'
-RESPOND_RESOURCE  = 'Helix::Environment::"workspace"'
+RESPOND_ACTION = 'Helix_Governance::Action::"respond"'
+RESPOND_RESOURCE = 'Helix::Environment::"workspace"'
 
 
 def test_respond_permits_healthy_exchange(policy):
@@ -133,11 +134,11 @@ def test_respond_denies_no_receipt(policy):
 # Action Gate — bash
 # ---------------------------------------------------------------------------
 
-AGENT     = 'Helix::Agent::"agent-001"'
-BASH      = 'Helix::Action::"bash"'
-ENV       = 'Helix::Environment::"workspace"'
-SANDBOX   = "/home/agent/sandbox/run.sh"
-OUTSIDE   = "/home/agent/work/script.sh"
+AGENT = 'Helix::Agent::"agent-001"'
+BASH = 'Helix::Action::"bash"'
+ENV = 'Helix::Environment::"workspace"'
+SANDBOX = "/home/agent/sandbox/run.sh"
+OUTSIDE = "/home/agent/work/script.sh"
 
 
 def test_bash_denied_without_path(policy):
@@ -146,27 +147,30 @@ def test_bash_denied_without_path(policy):
 
 
 def test_bash_denied_outside_sandbox(policy):
-    d = policy.evaluate(principal=AGENT, action=BASH, resource=ENV,
-                        context={"path": OUTSIDE})
+    d = policy.evaluate(principal=AGENT, action=BASH, resource=ENV, context={"path": OUTSIDE})
     assert not d.authorized
 
 
 def test_bash_permitted_in_sandbox(policy):
-    d = policy.evaluate(principal=AGENT, action=BASH, resource=ENV,
-                        context={"path": SANDBOX})
+    d = policy.evaluate(principal=AGENT, action=BASH, resource=ENV, context={"path": SANDBOX})
     assert d.authorized
 
 
 def test_bash_denied_sandbox_prefix_traversal(policy):
     """Path that starts with sandbox prefix but traverses out must be denied."""
-    d = policy.evaluate(principal=AGENT, action=BASH, resource=ENV,
-                        context={"path": "/home/agent/sandbox/../../../etc/passwd"})
+    d = policy.evaluate(
+        principal=AGENT,
+        action=BASH,
+        resource=ENV,
+        context={"path": "/home/agent/sandbox/../../../etc/passwd"},
+    )
     assert not d.authorized
 
 
 # ---------------------------------------------------------------------------
 # Action Gate — wallet_transfer (hard forbid)
 # ---------------------------------------------------------------------------
+
 
 def test_wallet_transfer_always_denied(policy):
     d = policy.evaluate(
@@ -185,36 +189,51 @@ def test_wallet_transfer_always_denied(policy):
 FILE_RESOURCE = 'Helix::Resource::"file"'
 
 
-@pytest.mark.parametrize("action", [
-    'Helix::Action::"write_file"',
-    'Helix::Action::"edit_file"',
-    'Helix::Action::"apply_patch"',
-])
+@pytest.mark.parametrize(
+    "action",
+    [
+        'Helix::Action::"write_file"',
+        'Helix::Action::"edit_file"',
+        'Helix::Action::"apply_patch"',
+    ],
+)
 def test_file_op_permitted_safe_path(policy, action):
-    d = policy.evaluate(principal=AGENT, action=action, resource=FILE_RESOURCE,
-                        context={"path": "/home/agent/work/output.txt"})
+    d = policy.evaluate(
+        principal=AGENT,
+        action=action,
+        resource=FILE_RESOURCE,
+        context={"path": "/home/agent/work/output.txt"},
+    )
     assert d.authorized
 
 
-@pytest.mark.parametrize("action", [
-    'Helix::Action::"write_file"',
-    'Helix::Action::"edit_file"',
-    'Helix::Action::"apply_patch"',
-])
+@pytest.mark.parametrize(
+    "action",
+    [
+        'Helix::Action::"write_file"',
+        'Helix::Action::"edit_file"',
+        'Helix::Action::"apply_patch"',
+    ],
+)
 def test_file_op_denied_dotenv(policy, action):
-    d = policy.evaluate(principal=AGENT, action=action, resource=FILE_RESOURCE,
-                        context={"path": "/home/agent/.env"})
+    d = policy.evaluate(
+        principal=AGENT, action=action, resource=FILE_RESOURCE, context={"path": "/home/agent/.env"}
+    )
     assert not d.authorized
 
 
-@pytest.mark.parametrize("action", [
-    'Helix::Action::"write_file"',
-    'Helix::Action::"edit_file"',
-    'Helix::Action::"apply_patch"',
-])
+@pytest.mark.parametrize(
+    "action",
+    [
+        'Helix::Action::"write_file"',
+        'Helix::Action::"edit_file"',
+        'Helix::Action::"apply_patch"',
+    ],
+)
 def test_file_op_denied_etc(policy, action):
-    d = policy.evaluate(principal=AGENT, action=action, resource=FILE_RESOURCE,
-                        context={"path": "/etc/passwd"})
+    d = policy.evaluate(
+        principal=AGENT, action=action, resource=FILE_RESOURCE, context={"path": "/etc/passwd"}
+    )
     assert not d.authorized
 
 
@@ -223,34 +242,43 @@ def test_file_op_denied_etc(policy, action):
 # ---------------------------------------------------------------------------
 
 API_RESOURCE = 'Helix::Resource::"api"'
-API_ACTION   = 'Helix::Action::"api_call"'
+API_ACTION = 'Helix::Action::"api_call"'
 
 
-@pytest.mark.parametrize("endpoint", [
-    "https://api.github.com/repos/foo/bar",
-    "https://pypi.org/pypi/helix-adapter/json",
-    "https://helix.openai.azure.com/openai/deployments/gpt-4o/chat",
-])
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "https://api.github.com/repos/foo/bar",
+        "https://pypi.org/pypi/helix-adapter/json",
+        "https://helix.openai.azure.com/openai/deployments/gpt-4o/chat",
+    ],
+)
 def test_api_call_permitted_allowlisted(policy, endpoint):
-    d = policy.evaluate(principal=AGENT, action=API_ACTION, resource=API_RESOURCE,
-                        context={"endpoint": endpoint})
+    d = policy.evaluate(
+        principal=AGENT, action=API_ACTION, resource=API_RESOURCE, context={"endpoint": endpoint}
+    )
     assert d.authorized
 
 
-@pytest.mark.parametrize("endpoint", [
-    "https://evil.com/exfil",
-    "http://api.github.com/repos/foo/bar",   # http, not https
-    "https://attacker.com/?url=https://api.github.com/",  # host mismatch
-])
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "https://evil.com/exfil",
+        "http://api.github.com/repos/foo/bar",  # http, not https
+        "https://attacker.com/?url=https://api.github.com/",  # host mismatch
+    ],
+)
 def test_api_call_denied_unlisted(policy, endpoint):
-    d = policy.evaluate(principal=AGENT, action=API_ACTION, resource=API_RESOURCE,
-                        context={"endpoint": endpoint})
+    d = policy.evaluate(
+        principal=AGENT, action=API_ACTION, resource=API_RESOURCE, context={"endpoint": endpoint}
+    )
     assert not d.authorized
 
 
 # ---------------------------------------------------------------------------
 # Decision & receipt objects
 # ---------------------------------------------------------------------------
+
 
 def test_decision_has_reason(policy):
     d = policy.evaluate(principal=AGENT, action=BASH, resource=ENV, context={})
@@ -260,8 +288,7 @@ def test_decision_has_reason(policy):
 
 
 def test_seal_action_produces_receipt(policy):
-    d = policy.evaluate(principal=AGENT, action=BASH, resource=ENV,
-                        context={"path": SANDBOX})
+    d = policy.evaluate(principal=AGENT, action=BASH, resource=ENV, context={"path": SANDBOX})
     receipt = policy.seal_action(
         exchange_id="test-exchange-001",
         action=BASH,
@@ -290,6 +317,7 @@ def test_seal_action_denied_receipt(policy):
 # ---------------------------------------------------------------------------
 # Fail-closed fallback
 # ---------------------------------------------------------------------------
+
 
 def test_fallback_denies_all():
     """A policy instance with no valid policy file must deny everything."""

@@ -17,7 +17,6 @@ from datetime import datetime, timezone
 
 from fastapi import Depends, HTTPException
 from fastapi.security import APIKeyHeader
-
 from foundry_db import get_conn
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)

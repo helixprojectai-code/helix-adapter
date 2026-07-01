@@ -32,14 +32,13 @@ import logging
 import time
 import uuid
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from .drift import compute_drift
 from .markers import extract_claims
 from .merkle import MerkleTree
-from .prompt import CONSTITUTIONAL_PROMPT, system_messages
-from .receipt import make_receipt
+from .prompt import system_messages
 from .store import InMemoryReceiptStore, ReceiptStore
 
 try:
@@ -71,6 +70,7 @@ class JointReceipt:
     Seals both Duck Gate (drift, claims) and Cedar Gate (action decision)
     in one receipt, chained to all prior turns via chain_hash.
     """
+
     exchange_id: str
     session_id: str
     turn: int
@@ -99,6 +99,7 @@ class JointReceipt:
 
     def to_dict(self) -> dict:
         import dataclasses
+
         return dataclasses.asdict(self)
 
 
@@ -238,9 +239,7 @@ class HelixSession:
         ).hexdigest()
 
         # Chain hash — links to all prior turns
-        chain_hash = hashlib.sha256(
-            (self._last_chain_hash + receipt_hash).encode()
-        ).hexdigest()
+        chain_hash = hashlib.sha256((self._last_chain_hash + receipt_hash).encode()).hexdigest()
 
         receipt = JointReceipt(
             **receipt_body,
@@ -311,9 +310,7 @@ class HelixSession:
 
         chain = ""
         for r in receipts:
-            chain = hashlib.sha256(
-                (chain + r["hash"]).encode()
-            ).hexdigest()
+            chain = hashlib.sha256((chain + r["hash"]).encode()).hexdigest()
         return chain
 
     def merkle_consistency_check(self) -> bool:

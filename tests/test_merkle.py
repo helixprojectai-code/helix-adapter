@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
+
 from helix_adapter.merkle import MerkleTree
 
 
@@ -64,7 +65,9 @@ def test_proof_and_verify_five_leaves():
         t.append(leaf)
     for turn in range(5):
         p = t.proof(turn)
-        assert MerkleTree.verify(p["leaf_hash"], p["proof"], p["root"]), f"proof failed at turn {turn}"
+        assert MerkleTree.verify(
+            p["leaf_hash"], p["proof"], p["root"]
+        ), f"proof failed at turn {turn}"
 
 
 def test_proof_out_of_range():
@@ -77,8 +80,8 @@ def test_proof_out_of_range():
 def test_from_leaves_matches_sequential_append():
     leaves = ["a", "b", "c", "d"]
     t1 = MerkleTree()
-    for l in leaves:
-        t1.append(l)
+    for leaf in leaves:
+        t1.append(leaf)
 
     t2 = MerkleTree.from_leaves(leaves)
     assert t1.root == t2.root

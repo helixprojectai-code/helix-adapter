@@ -4,18 +4,16 @@
 
 """Foundry API key management CLI.
 
-    python3 foundry_keygen.py --node hermes [--note "Hermes inference node"]
-    python3 foundry_keygen.py --list
-    python3 foundry_keygen.py --revoke hx-<hex>
+python3 foundry_keygen.py --node hermes [--note "Hermes inference node"]
+python3 foundry_keygen.py --list
+python3 foundry_keygen.py --revoke hx-<hex>
 """
 
 import argparse
 import secrets
-import sqlite3
 from datetime import datetime, timezone
-from pathlib import Path
 
-from foundry_db import DB_PATH, get_conn
+from foundry_db import get_conn
 
 
 def generate_key() -> str:
@@ -34,7 +32,7 @@ def cmd_create(node_id: str, note: str) -> None:
     conn.close()
     print(f"Key created for node '{node_id}':")
     print(f"  {key}")
-    print(f"  Store this — it cannot be retrieved after this point.")
+    print("  Store this — it cannot be retrieved after this point.")
 
 
 def cmd_revoke(key: str) -> None:
