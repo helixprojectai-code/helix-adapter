@@ -266,10 +266,15 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
     --fact: #238636; --reasoned: #58a6ff; --hypothesis: #d29922;
     --uncertain: #da3633; --conclusion: #8b6cef;
     --accent: #58a6ff; --radius: 8px;
+    --shield: #238636; --shield-bg: #0d2b1a;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
-  .container { max-width: 900px; margin: 0 auto; padding: 24px; }
+  .container { max-width: 1280px; margin: 0 auto; padding: 24px; }
+  .layout { display: flex; gap: 16px; align-items: flex-start; }
+  .col-main { flex: 1 1 0; min-width: 0; }
+  .col-side { width: 340px; flex-shrink: 0; position: sticky; top: 16px; }
+  @media (max-width: 900px) { .layout { flex-direction: column; } .col-side { width: 100%; position: static; } }
   h1 { font-size: 24px; margin-bottom: 4px; }
   h1 span { color: var(--accent); }
   .subtitle { color: var(--text-dim); font-size: 13px; margin-bottom: 20px; }
@@ -288,10 +293,17 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
   .input-row select { min-width: 140px; }
   .input-row button { background: var(--accent); color: #000; border: none; border-radius: var(--radius); padding: 8px 20px; font-weight: 600; cursor: pointer; font-size: 13px; }
   .input-row button:disabled { opacity: 0.5; cursor: default; }
-  .route-badge { display: inline-flex; align-items: center; gap: 8px; background: #1a2332; border: 1px solid var(--accent); border-radius: var(--radius); padding: 6px 14px; font-size: 12px; margin-bottom: 12px; }
+  .complexity-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 12px; color: var(--text-dim); }
+  .complexity-row input[type=range] { flex: 1; accent-color: var(--accent); }
+  .complexity-row .val { font-family: monospace; color: var(--text); min-width: 18px; text-align: right; }
+  .route-badge { display: inline-flex; align-items: center; gap: 8px; background: #1a2332; border: 1px solid var(--accent); border-radius: var(--radius); padding: 6px 14px; font-size: 12px; margin-bottom: 8px; }
   .route-badge .model { font-weight: 700; color: var(--accent); }
   .route-badge .pool { color: var(--text-dim); }
   .route-badge .hash { font-family: monospace; font-size: 10px; color: var(--text-dim); }
+  .integrity-badge { display: inline-flex; align-items: center; gap: 8px; background: var(--shield-bg); border: 1px solid var(--shield); border-radius: var(--radius); padding: 5px 12px; font-size: 11px; font-weight: 600; color: #3fb950; margin-bottom: 8px; }
+  .integrity-badge .shield { font-size: 14px; }
+  .integrity-badge .sep { color: #30363d; margin: 0 2px; }
+  .integrity-badge.partial { border-color: #d29922; background: #2b1e0d; color: #d29922; }
   .drift-bar { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
   .drift-track { width: 60px; height: 6px; background: #21262d; border-radius: 3px; overflow: hidden; display: inline-block; }
   .drift-fill { height: 100%; border-radius: 3px; transition: width .3s, background .3s; }
@@ -308,6 +320,18 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
   .ledger-entry .a { white-space: pre-wrap; color: var(--text); }
   .ledger-entry .meta { font-size: 10px; color: var(--text-dim); margin-top: 4px; }
   hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+  .log-pre { font-size: 10px; font-family: monospace; white-space: pre-wrap; word-break: break-all; max-height: 340px; overflow-y: auto; color: var(--text-dim); line-height: 1.5; }
+  .log-pre .j-key { color: #79c0ff; }
+  .log-pre .j-str { color: #a5d6ff; }
+  .log-pre .j-num { color: #f0883e; }
+  .log-pre .j-bool { color: #d2a8ff; }
+  .log-pre .j-null { color: var(--text-dim); }
+  .log-pre .j-marker-fact { color: #3fb950; font-weight: 700; }
+  .log-pre .j-marker-reasoned { color: #58a6ff; font-weight: 700; }
+  .log-pre .j-marker-hypothesis { color: #d29922; font-weight: 700; }
+  .log-pre .j-marker-uncertain { color: #da3633; font-weight: 700; }
+  .log-pre .j-marker-conclusion { color: #8b6cef; font-weight: 700; }
+  .merkle-root { font-family: monospace; font-size: 10px; color: #3fb950; word-break: break-all; background: var(--shield-bg); border: 1px solid var(--shield); border-radius: 4px; padding: 4px 8px; margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -332,14 +356,17 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
 </div>
 
 <h1>&#9877; <span>Helix Foundry</span> &mdash; Cedar Routed Chat</h1>
-<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-<p class="subtitle" style="margin-bottom:0;">Action-context routing: your action determines which model handles the query. Cedar Decision Mesh available with native library install — static action→model map as zero-latency fallback. Every response drift-scored, receipt-sealed.</p>
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+<p class="subtitle" style="margin-bottom:0;">Cedar routes each request to the right model pool. Every response is drift-scored, receipt-sealed, and Merkle-verified.</p>
 <div style="flex:1;"></div>
 <select id="exportSelector" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;max-width:200px;">
   <option value="all">All entries</option>
 </select>
 <button id="exportBtn" style="background:var(--surface);color:var(--text-dim);border:1px solid var(--border);border-radius:var(--radius);padding:2px 10px;cursor:pointer;font-size:11px;">Export</button>
 </div>
+
+<div class="layout">
+<div class="col-main">
 
 <div class="card">
   <h2>Send Message</h2>
@@ -350,6 +377,17 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
     </label>
     <span id="sessionBadge" style="display:none;font-size:11px;font-family:monospace;background:#1a2332;border:1px solid var(--accent);border-radius:4px;padding:2px 8px;color:var(--accent);"></span>
     <button id="endSessionBtn" onclick="endSession()" style="display:none;background:var(--uncertain);color:#fff;border:none;border-radius:var(--radius);padding:3px 10px;font-size:11px;cursor:pointer;">End Session</button>
+  </div>
+  <div class="complexity-row">
+    <span>complexity</span>
+    <input type="range" id="complexitySlider" min="1" max="10" value="5" oninput="document.getElementById('complexityVal').textContent=this.value">
+    <span class="val" id="complexityVal">5</span>
+    <span style="margin-left:12px;">drift tol.</span>
+    <select id="driftSelect" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 6px;color:var(--text);font-size:11px;">
+      <option value="0.03">strict 0.03</option>
+      <option value="0.10" selected>normal 0.10</option>
+      <option value="0.20">loose 0.20</option>
+    </select>
   </div>
   <div class="input-row">
     <input id="msgInput" type="text" placeholder="Ask anything..." autofocus onkeydown="if(event.key==='Enter')send()">
@@ -372,6 +410,7 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
 </div>
 
 <div id="result" class="card" style="display:none;">
+  <div id="integrityBadge"></div>
   <div id="routeInfo"></div>
   <div id="responseText" class="response-body"></div>
   <div id="metaInfo" class="meta-row"></div>
@@ -386,7 +425,32 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
   <div id="ledger"><span class="empty">Loading...</span></div>
 </div>
 
+</div><!-- /col-main -->
+
+<div class="col-side">
+  <div class="card">
+    <h2>&#128200; Cost vs Complexity</h2>
+    <canvas id="costChart" height="200"></canvas>
+    <div style="margin-top:8px;font-size:10px;color:var(--text-dim);display:flex;gap:10px;flex-wrap:wrap;">
+      <span><span style="color:#3fb950;">&#9632;</span> high_cap</span>
+      <span><span style="color:#d29922;">&#9632;</span> adversarial</span>
+      <span><span style="color:#58a6ff;">&#9632;</span> cost_opt</span>
+      <span><span style="color:#8b6cef;">&#9632;</span> sovereign</span>
+    </div>
+  </div>
+  <div class="card">
+    <h2>&#128196; Constitutional Log</h2>
+    <div id="merkleDisplay" style="display:none;">
+      <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;">merkle root</div>
+      <div id="merkleRoot" class="merkle-root"></div>
+    </div>
+    <div id="receiptLog" class="log-pre" style="margin-top:10px;"><span class="empty">Send a message to see the receipt.</span></div>
+  </div>
+</div><!-- /col-side -->
+
+</div><!-- /layout -->
 </div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 const API = '/routed-chat';
 let allEntries = [];
@@ -395,6 +459,114 @@ let _sessionMode = false;
 let _sessionId = null;
 let _sessionTurn = 0;
 let _sessionModel = null;
+let _chart = null;
+let _chartData = [];
+
+const POOL_COLORS = {
+  high_capability: '#3fb950',
+  adversarial:     '#d29922',
+  cost_optimized:  '#58a6ff',
+  sovereign:       '#8b6cef',
+  static:          '#8b949e',
+};
+
+function initChart() {
+  const ctx = document.getElementById('costChart').getContext('2d');
+  _chart = new Chart(ctx, {
+    type: 'scatter',
+    data: { datasets: [] },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ctx.raw.label + '  complexity ' + ctx.raw.x + '  tokens ' + ctx.raw.y,
+          }
+        }
+      },
+      scales: {
+        x: { title: { display: true, text: 'Task Complexity', color: '#8b949e', font: { size: 10 } },
+             min: 0, max: 11, ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' } },
+        y: { title: { display: true, text: 'Total Tokens', color: '#8b949e', font: { size: 10 } },
+             min: 0, ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' } },
+      },
+      backgroundColor: '#161b22',
+    }
+  });
+}
+
+function updateChart(complexity, tokens, pool, label) {
+  if (!_chart) return;
+  const color = POOL_COLORS[pool] || '#8b949e';
+  const point = { x: complexity, y: tokens, label: label };
+  _chartData.push({ color, point });
+  const poolDatasets = {};
+  _chartData.forEach(d => {
+    if (!poolDatasets[d.point.label]) {
+      poolDatasets[d.point.label] = { label: d.point.label, data: [], backgroundColor: d.color, pointRadius: 6, pointHoverRadius: 8 };
+    }
+    poolDatasets[d.point.label].data.push(d.point);
+  });
+  _chart.data.datasets = Object.values(poolDatasets);
+  _chart.update();
+}
+
+function renderIntegrityBadge(data) {
+  const el = document.getElementById('integrityBadge');
+  const hasMerkle = data.receipt && data.receipt.merkle_root;
+  const hasChain = data.receipt && data.receipt.chain_hash;
+  const hasHash = (data.receipt && data.receipt.hash) || data.hash;
+  if (hasMerkle && hasChain) {
+    el.innerHTML = '<div class="integrity-badge"><span class="shield">&#x1F6E1;&#xFE0F;</span> Merkle Verified <span class="sep">|</span> Chain Intact</div>';
+  } else if (hasHash) {
+    el.innerHTML = '<div class="integrity-badge partial"><span class="shield">&#x1F512;</span> Receipt Sealed</div>';
+  } else {
+    el.innerHTML = '';
+  }
+}
+
+function colorizeJson(json) {
+  const markers = {'[FACT]':'fact','[REASONED]':'reasoned','[HYPOTHESIS]':'hypothesis','[UNCERTAIN]':'uncertain','[CONCLUSION]':'conclusion'};
+  let s = json
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"(\\u[0-9a-fA-F]{4}|\\[^u]|[^"\\])*"/g, m => '<span class="j-str">' + m + '</span>')
+    .replace(/\\b(-?\\d+\\.?\\d*(?:[eE][+-]?\\d+)?)\\b/g, '<span class="j-num">$1</span>')
+    .replace(/\b(true|false)\b/g, '<span class="j-bool">$1</span>')
+    .replace(/\bnull\b/g, '<span class="j-null">null</span>');
+  Object.entries(markers).forEach(([tag, cls]) => {
+    s = s.split(tag.replace('[','\\[').replace(']','\\]')).join('<span class="j-marker-'+cls+'">'+tag+'</span>');
+    const escaped = tag.replace('[','&#91;').replace(']','&#93;');
+    s = s.split(escaped).join('<span class="j-marker-'+cls+'">'+tag+'</span>');
+  });
+  return s;
+}
+
+function updateConstitutionalLog(data) {
+  const receipt = data.receipt || { hash: data.hash, chain_hash: data.chain_hash, merkle_root: data.merkle_root };
+  const merkleRoot = receipt.merkle_root || null;
+  const logEl = document.getElementById('receiptLog');
+  const merkleEl = document.getElementById('merkleDisplay');
+  const merkleRootEl = document.getElementById('merkleRoot');
+  if (merkleRoot) {
+    merkleEl.style.display = 'block';
+    merkleRootEl.textContent = merkleRoot;
+  } else {
+    merkleEl.style.display = 'none';
+  }
+  const slim = {
+    model: data.label || data.model,
+    pool: data.pool,
+    policy_hash: data.policy_hash,
+    drift: data.drift !== undefined ? data.drift : data.drift_score,
+    claims: data.claims,
+    usage: data.usage,
+    hash: receipt.hash,
+    chain_hash: receipt.chain_hash || null,
+    merkle_root: merkleRoot,
+  };
+  logEl.innerHTML = colorizeJson(JSON.stringify(slim, null, 2));
+}
 
 function getApiKey() { return _apiKey; }
 
@@ -423,6 +595,7 @@ function showKeyForm() {
 function showApp() {
   document.getElementById('keyGate').style.display = 'none';
   document.getElementById('appContent').style.display = 'block';
+  initChart();
   loadLedger();
 }
 
@@ -529,6 +702,8 @@ async function send() {
   const msg = document.getElementById('msgInput').value.trim();
   if (!msg) return;
   const action = document.getElementById('actionSelect').value;
+  const complexity = parseInt(document.getElementById('complexitySlider').value);
+  const driftTol = parseFloat(document.getElementById('driftSelect').value);
   const btn = document.getElementById('sendBtn');
   btn.disabled = true;
   document.getElementById('loading').style.display = 'block';
@@ -537,7 +712,6 @@ async function send() {
   try {
     let data;
     if (_sessionMode) {
-      // Start session on first message
       if (!_sessionId) {
         const sess = await _startSession(action);
         _sessionId = sess.session_id;
@@ -546,7 +720,6 @@ async function send() {
         document.getElementById('sessionBadge').style.display = 'inline';
         document.getElementById('endSessionBtn').style.display = 'inline';
       }
-      // Send turn
       const resp = await fetch('/session/' + _sessionId + '/send', {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-API-Key': getApiKey()},
@@ -563,16 +736,20 @@ async function send() {
         '<span class="hash">chain #' + (data.chain_hash||'').substring(0,10) + '</span>' +
         '</div>';
       document.getElementById('responseText').textContent = data.response || '(empty)';
+      const tokens = data.usage ? data.usage.total_tokens : null;
       document.getElementById('metaInfo').innerHTML =
         '<span class="drift-bar">drift <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+driftColor(data.drift_score||0)+';"></span></span> &gamma; '+(data.drift_score||0).toFixed(3)+'</span>' +
         renderClaims(data.claims) +
-        '<span style="font-family:monospace;font-size:10px;">receipt #'+(data.hash||'?').substring(0,10)+'</span>';
+        '<span style="font-family:monospace;font-size:10px;">receipt #'+(data.hash||'?').substring(0,10)+'</span>' +
+        (tokens ? '<span style="color:var(--text-dim);">&#128196; '+tokens+' tok</span>' : '');
+      renderIntegrityBadge(data);
+      updateConstitutionalLog(data);
+      if (tokens) updateChart(complexity, tokens, data.pool || 'static', data.model || _sessionModel);
     } else {
-      // Stateless single-turn (existing behaviour)
       const resp = await fetch(API, {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-API-Key': getApiKey()},
-        body: JSON.stringify({action: action, message: msg})
+        body: JSON.stringify({action: action, message: msg, task_complexity: complexity, drift_tolerance: driftTol})
       });
       data = await resp.json();
 
@@ -583,10 +760,15 @@ async function send() {
         '<span class="hash">#'+(data.policy_hash||'fallback').substring(0,12)+'</span>' +
         '</div>';
       document.getElementById('responseText').textContent = data.response || '(empty)';
+      const tokens = data.usage ? data.usage.total_tokens : null;
       document.getElementById('metaInfo').innerHTML =
         '<span class="drift-bar">drift <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+driftColor(data.drift||0)+';"></span></span> &gamma; '+(data.drift||0).toFixed(3)+'</span>' +
         renderClaims(data.claims) +
-        '<span style="font-family:monospace;font-size:10px;">receipt #'+(data.receipt?.hash||'?').substring(0,10)+'</span>';
+        '<span style="font-family:monospace;font-size:10px;">receipt #'+(data.receipt?.hash||'?').substring(0,10)+'</span>' +
+        (tokens ? '<span style="color:var(--text-dim);">&#128196; '+tokens+' tok</span>' : '');
+      renderIntegrityBadge(data);
+      updateConstitutionalLog(data);
+      if (tokens) updateChart(data.task_complexity || complexity, tokens, data.pool, data.label);
       loadLedger();
     }
 
@@ -595,6 +777,7 @@ async function send() {
     document.getElementById('routeInfo').innerHTML = '<span style="color:var(--uncertain)">Error: '+e.message+'</span>';
     document.getElementById('responseText').textContent = '';
     document.getElementById('metaInfo').innerHTML = '';
+    document.getElementById('integrityBadge').innerHTML = '';
     document.getElementById('result').style.display = 'block';
   }
 
@@ -814,6 +997,7 @@ async def routed_chat(req: RoutedChatRequest, request: Request, _key: dict = Dep
         "drift": result.drift,
         "receipt": result.receipt,
         "usage": usage,
+        "task_complexity": req.task_complexity,
     }
 
 
