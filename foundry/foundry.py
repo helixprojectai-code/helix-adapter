@@ -526,17 +526,18 @@ function renderIntegrityBadge(data) {
 }
 
 function colorizeJson(json) {
-  const markers = {'[FACT]':'fact','[REASONED]':'reasoned','[HYPOTHESIS]':'hypothesis','[UNCERTAIN]':'uncertain','[CONCLUSION]':'conclusion'};
-  let s = json
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-    .replace(/"(\\u[0-9a-fA-F]{4}|\\[^u]|[^"\\])*"/g, m => '<span class="j-str">' + m + '</span>')
-    .replace(/\\b(-?\\d+\\.?\\d*(?:[eE][+-]?\\d+)?)\\b/g, '<span class="j-num">$1</span>')
-    .replace(/\b(true|false)\b/g, '<span class="j-bool">$1</span>')
-    .replace(/\bnull\b/g, '<span class="j-null">null</span>');
-  Object.entries(markers).forEach(([tag, cls]) => {
-    s = s.split(tag.replace('[','\\[').replace(']','\\]')).join('<span class="j-marker-'+cls+'">'+tag+'</span>');
-    const escaped = tag.replace('[','&#91;').replace(']','&#93;');
-    s = s.split(escaped).join('<span class="j-marker-'+cls+'">'+tag+'</span>');
+  const markerMap = {
+    '[FACT]':'fact','[REASONED]':'reasoned',
+    '[HYPOTHESIS]':'hypothesis','[UNCERTAIN]':'uncertain','[CONCLUSION]':'conclusion'
+  };
+  let s = json.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  s = s.replace(/"([^"]*)"(\\s*:)/g, '<span class="j-key">"$1"</span>$2');
+  s = s.replace(/: "([^"]*)"/g, ': "<span class="j-str">$1</span>"');
+  s = s.replace(/: (-?[0-9]+\\.?[0-9]*)/g, ': <span class="j-num">$1</span>');
+  s = s.replace(/: (true|false)/g, ': <span class="j-bool">$1</span>');
+  s = s.replace(/: (null)/g, ': <span class="j-null">$1</span>');
+  Object.entries(markerMap).forEach(([tag, cls]) => {
+    s = s.split(tag).join('<span class="j-marker-'+cls+'">'+tag+'</span>');
   });
   return s;
 }
