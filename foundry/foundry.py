@@ -28,7 +28,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from foundry_auth import require_key
-from openai import OpenAI
+from openai import BadRequestError, OpenAI
 from pydantic import BaseModel
 
 from helix_adapter import HelixAdapter, HelixSession
@@ -690,6 +690,20 @@ class SessionSendRequest(BaseModel):
     message: str
 
 
+def _content_filter_label(e: BadRequestError) -> str:
+    """Extract Azure content filter label from a BadRequestError, if present."""
+    try:
+        body = e.response.json()
+        for choice in body.get("choices", []):
+            cfr = choice.get("content_filter_results", {})
+            err = cfr.get("error", {})
+            if err.get("code") == "content_filter":
+                return err.get("message", "content_filter")
+    except Exception:
+        pass
+    return str(e)
+
+
 def _save_entry(entry: dict):
     LEDGER_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(LEDGER_FILE, "a") as f:
@@ -721,6 +735,9 @@ async def chat(req: ChatRequest, request: Request, _key: dict = Depends(require_
         result = adapter.chat(req.message)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    except BadRequestError as e:
+        label = _content_filter_label(e)
+        raise HTTPException(422, f"[SAFETY REJECTION] {label}")
     except Exception as e:
         raise HTTPException(502, f"Model call failed: {e}")
 
@@ -774,7 +791,12 @@ async def routed_chat(req: RoutedChatRequest, request: Request, _key: dict = Dep
     route = cedar_route(context)
 
     adapter, label = build_adapter(route["model"])
-    result = adapter.chat(req.message)
+    try:
+        result = adapter.chat(req.message)
+    except BadRequestError as e:
+        raise HTTPException(422, f"[SAFETY REJECTION] {_content_filter_label(e)}")
+    except Exception as e:
+        raise HTTPException(502, f"Model call failed: {e}")
 
     entry = {
         "timestamp": time.time(),
@@ -911,6 +933,8 @@ async def session_send(
 
     try:
         receipt = session.send(req.message)
+    except BadRequestError as e:
+        raise HTTPException(422, f"[SAFETY REJECTION] {_content_filter_label(e)}")
     except Exception as e:
         raise HTTPException(502, f"Model call failed: {e}")
 
