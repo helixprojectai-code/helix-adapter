@@ -1737,24 +1737,21 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   <p style="margin:0 0 10px;font-size:13px;">Cedar evaluates the context fields you send and routes to the best-fit pool. No match defaults to <strong>high_capability</strong>.</p>
   <table>
     <tr><th>Pool</th><th>Model</th><th>Routes when</th></tr>
-    <tr><td>high_capability</td><td>DeepSeek 4 Pro</td><td><code>task_complexity &ge; 8</code> and <code>drift_tolerance &lt; 0.05</code></td></tr>
-    <tr><td>adversarial</td><td>Grok 4.3</td><td><code>action_type</code> is <code>bash</code> / <code>execute</code> / <code>api_call</code> / <code>shell</code></td></tr>
-    <tr><td>cost_optimized</td><td>GPT-5.4 Nano</td><td><code>priority: batch</code> and <code>drift_tolerance &ge; 0.10</code></td></tr>
-    <tr><td>sovereign</td><td>Mistral Large 3</td><td><code>locale</code> is <code>fr</code> / <code>de</code> / <code>es</code> / <code>it</code> / <code>nl</code> / <code>bg</code> / <code>fa</code> / <code>ur</code> / &hellip;</td></tr>
+    {routing_rows}
   </table>
 </div>
 <div class="card" style="margin-top:16px;">
   <h2>Endpoints</h2>
   <table>
     <tr><th>Endpoint</th><th>Method</th><th>What it does</th></tr>
-    <tr><td><code>/chat</code></td><td>POST</td><td>Direct model call &mdash; <code>{"model": "deepseek-4-pro", "message": "..."}</code></td></tr>
+    <tr><td><code>/chat</code></td><td>POST</td><td>Direct model call &mdash; <code>{"model": "{default_model}", "message": "..."}</code></td></tr>
     <tr><td><code>/routed-chat/</code></td><td>POST / GET</td><td>Cedar-routed call &mdash; optional context fields: <code>task_complexity</code>, <code>drift_tolerance</code>, <code>action_type</code>, <code>priority</code>, <code>locale</code></td></tr>
     <tr><td><code>/audit/</code></td><td>GET</td><td>Paste any model response to score drift, extract claims, verify receipt</td></tr>
     <tr><td><code>/health</code></td><td>GET</td><td>Per-model status and drift &mdash; returns JSON</td></tr>
   </table>
   <p style="margin:12px 0 0;font-size:12px;color:var(--text-dim);">Every response is drift-scored and receipt-sealed. The <code>cedar</code> block in each receipt records gate status: <code>active</code> &middot; <code>fail_closed</code> &middot; <code>not_configured</code>.</p>
 </div>
-<p class="footer">DeepSeek 4 Pro &middot; Grok 4.3 &middot; GPT-5.4 Nano &middot; Mistral Large 3 &middot; GLORY TO THE LATTICE. &#129429;&#9875;&#129438;</p>
+<p class="footer">{footer_models} &middot; GLORY TO THE LATTICE. &#129429;&#9875;&#129438;</p>
 </div></body></html>"""
 
 
@@ -1773,7 +1770,28 @@ async def dashboard():
     if not rows:
         rows = '<tr><td colspan="2">No prompts yet.</td></tr>'
 
-    return DASHBOARD_HTML.replace("{rows}", rows)
+    pool_hints = {
+        "high_capability": "<code>task_complexity &ge; 8</code> and <code>drift_tolerance &lt; 0.05</code>",
+        "adversarial": "<code>action_type</code> is <code>bash</code> / <code>execute</code> / <code>api_call</code> / <code>shell</code>",
+        "cost_optimized": "<code>priority: batch</code> and <code>drift_tolerance &ge; 0.10</code>",
+        "sovereign": "<code>locale</code> is <code>fr</code> / <code>de</code> / <code>es</code> / <code>zh</code> / &hellip;",
+    }
+    routing_rows = ""
+    for pool, model_key in MODEL_POOL_MAP.items():
+        label = MODELS.get(model_key, {}).get("label", model_key)
+        hint = pool_hints.get(pool, "&mdash;")
+        routing_rows += f"<tr><td>{pool}</td><td>{label}</td><td>{hint}</td></tr>"
+
+    default_model = next(iter(MODELS))
+    footer_models = " &middot; ".join(cfg["label"] for cfg in MODELS.values())
+
+    return (
+        DASHBOARD_HTML
+        .replace("{rows}", rows)
+        .replace("{routing_rows}", routing_rows)
+        .replace("{default_model}", default_model)
+        .replace("{footer_models}", footer_models)
+    )
 
 
 SESSIONS_HTML = """<!DOCTYPE html>
