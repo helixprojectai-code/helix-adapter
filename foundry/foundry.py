@@ -430,7 +430,7 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
 <div class="col-side">
   <div class="card">
     <h2>&#128200; Cost vs Complexity</h2>
-    <canvas id="costChart" height="200"></canvas>
+    <div id="costChart"></div>
     <div style="margin-top:8px;font-size:10px;color:var(--text-dim);display:flex;gap:10px;flex-wrap:wrap;">
       <span><span style="color:#3fb950;">&#9632;</span> high_cap</span>
       <span><span style="color:#d29922;">&#9632;</span> adversarial</span>
@@ -450,7 +450,6 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
 
 </div><!-- /layout -->
 </div>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 const API = '/routed-chat';
 let allEntries = [];
@@ -459,7 +458,6 @@ let _sessionMode = false;
 let _sessionId = null;
 let _sessionTurn = 0;
 let _sessionModel = null;
-let _chart = null;
 let _chartData = [];
 
 const POOL_COLORS = {
@@ -470,46 +468,47 @@ const POOL_COLORS = {
   static:          '#8b949e',
 };
 
-function initChart() {
-  const ctx = document.getElementById('costChart').getContext('2d');
-  _chart = new Chart(ctx, {
-    type: 'scatter',
-    data: { datasets: [] },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: ctx => ctx.raw.label + '  complexity ' + ctx.raw.x + '  tokens ' + ctx.raw.y,
-          }
-        }
-      },
-      scales: {
-        x: { title: { display: true, text: 'Task Complexity', color: '#8b949e', font: { size: 10 } },
-             min: 0, max: 11, ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' } },
-        y: { title: { display: true, text: 'Total Tokens', color: '#8b949e', font: { size: 10 } },
-             min: 0, ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' } },
-      },
-      backgroundColor: '#161b22',
-    }
-  });
-}
+function initChart() { renderChart(); }
 
 function updateChart(complexity, tokens, pool, label) {
-  if (!_chart) return;
-  const color = POOL_COLORS[pool] || '#8b949e';
-  const point = { x: complexity, y: tokens, label: label };
-  _chartData.push({ color, point });
-  const poolDatasets = {};
-  _chartData.forEach(d => {
-    if (!poolDatasets[d.point.label]) {
-      poolDatasets[d.point.label] = { label: d.point.label, data: [], backgroundColor: d.color, pointRadius: 6, pointHoverRadius: 8 };
-    }
-    poolDatasets[d.point.label].data.push(d.point);
+  _chartData.push({ x: complexity, y: tokens, pool, label });
+  renderChart();
+}
+
+function renderChart() {
+  const W = 300, H = 180, PAD = { t: 10, r: 10, b: 32, l: 42 };
+  const iW = W - PAD.l - PAD.r, iH = H - PAD.t - PAD.b;
+  const maxY = _chartData.length ? Math.max(200, ..._chartData.map(d => d.y)) : 200;
+  function sx(v) { return PAD.l + (v / 10) * iW; }
+  function sy(v) { return PAD.t + iH - (v / maxY) * iH; }
+
+  let gridLines = '';
+  [0, 2, 4, 6, 8, 10].forEach(x => {
+    const px = sx(x);
+    gridLines += '<line x1="'+px+'" y1="'+PAD.t+'" x2="'+px+'" y2="'+(PAD.t+iH)+'" stroke="#21262d" stroke-width="1"/>';
+    gridLines += '<text x="'+px+'" y="'+(PAD.t+iH+14)+'" fill="#8b949e" font-size="9" text-anchor="middle">'+x+'</text>';
   });
-  _chart.data.datasets = Object.values(poolDatasets);
-  _chart.update();
+  [0, Math.round(maxY/2), maxY].forEach(y => {
+    const py = sy(y);
+    gridLines += '<line x1="'+PAD.l+'" y1="'+py+'" x2="'+(PAD.l+iW)+'" y2="'+py+'" stroke="#21262d" stroke-width="1"/>';
+    gridLines += '<text x="'+(PAD.l-4)+'" y="'+(py+3)+'" fill="#8b949e" font-size="9" text-anchor="end">'+y+'</text>';
+  });
+
+  const dots = _chartData.map(d => {
+    const c = POOL_COLORS[d.pool] || '#8b949e';
+    return '<circle cx="'+sx(d.x)+'" cy="'+sy(d.y)+'" r="5" fill="'+c+'" opacity="0.85"><title>'+d.label+' · complexity '+d.x+' · '+d.y+' tokens</title></circle>';
+  }).join('');
+
+  const axisLabels =
+    '<text x="'+(PAD.l+iW/2)+'" y="'+(H-2)+'" fill="#8b949e" font-size="9" text-anchor="middle">complexity</text>' +
+    '<text x="10" y="'+(PAD.t+iH/2)+'" fill="#8b949e" font-size="9" text-anchor="middle" transform="rotate(-90,10,'+(PAD.t+iH/2)+')">tokens</text>';
+
+  const empty = _chartData.length === 0
+    ? '<text x="'+(W/2)+'" y="'+(H/2)+'" fill="#8b949e" font-size="11" text-anchor="middle">send messages to populate</text>' : '';
+
+  document.getElementById('costChart').innerHTML =
+    '<svg width="'+W+'" height="'+H+'" style="display:block;background:#0d1117;border-radius:6px;">' +
+    gridLines + dots + axisLabels + empty + '</svg>';
 }
 
 function renderIntegrityBadge(data) {
