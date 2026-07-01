@@ -209,6 +209,7 @@ def build_adapter(model_name: str):
         raise ValueError(f"No API key for {model_name}")
     client = OpenAI(api_key=key, base_url=cfg["endpoint"])
     depl = cfg["deployment"]
+    usage_capture: dict = {}
 
     def fn(messages):
         kwargs = {
@@ -220,10 +221,17 @@ def build_adapter(model_name: str):
             kwargs["max_completion_tokens"] = 4096
         else:
             kwargs["max_tokens"] = 4096
-        return client.chat.completions.create(**kwargs).choices[0].message.content
+        resp = client.chat.completions.create(**kwargs)
+        if resp.usage:
+            usage_capture.update({
+                "prompt_tokens": resp.usage.prompt_tokens,
+                "completion_tokens": resp.usage.completion_tokens,
+                "total_tokens": resp.usage.total_tokens,
+            })
+        return resp.choices[0].message.content
 
     adapter = HelixAdapter(model_fn=fn, model_name=cfg["label"])
-    return adapter, cfg["label"]
+    return adapter, cfg["label"], usage_capture
 
 
 def build_session(model_name: str, session_id: str | None = None) -> tuple["HelixSession", str]:
@@ -240,6 +248,7 @@ def build_session(model_name: str, session_id: str | None = None) -> tuple["Heli
         raise ValueError(f"No API key for {model_name}")
     client = OpenAI(api_key=key, base_url=cfg["endpoint"])
     depl = cfg["deployment"]
+    usage_capture: dict = {}
 
     def fn(messages):
         kwargs = {
@@ -251,7 +260,14 @@ def build_session(model_name: str, session_id: str | None = None) -> tuple["Heli
             kwargs["max_completion_tokens"] = 4096
         else:
             kwargs["max_tokens"] = 4096
-        return client.chat.completions.create(**kwargs).choices[0].message.content
+        resp = client.chat.completions.create(**kwargs)
+        if resp.usage:
+            usage_capture.update({
+                "prompt_tokens": resp.usage.prompt_tokens,
+                "completion_tokens": resp.usage.completion_tokens,
+                "total_tokens": resp.usage.total_tokens,
+            })
+        return resp.choices[0].message.content
 
     label = cfg["label"]
     if session_id:
@@ -263,7 +279,7 @@ def build_session(model_name: str, session_id: str | None = None) -> tuple["Heli
         )
     else:
         session = HelixSession(model_fn=fn, model_name=label, store=FOUNDRY_STORE)
-    return session, label
+    return session, label, usage_capture
 
 
 ROUTED_CHAT_HTML = """<!DOCTYPE html>
@@ -731,7 +747,7 @@ async def chat(req: ChatRequest, request: Request, _key: dict = Depends(require_
     if not req.message.strip():
         raise HTTPException(400, "message empty")
     try:
-        adapter, label = build_adapter(req.model)
+        adapter, label, usage = build_adapter(req.model)
         result = adapter.chat(req.message)
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -750,6 +766,7 @@ async def chat(req: ChatRequest, request: Request, _key: dict = Depends(require_
         "claims": result.claims,
         "drift": result.drift,
         "receipt_hash": result.receipt.get("hash", ""),
+        "usage": usage,
     }
     _save_entry(entry)
 
@@ -760,6 +777,7 @@ async def chat(req: ChatRequest, request: Request, _key: dict = Depends(require_
         "claims": result.claims,
         "drift": result.drift,
         "receipt": result.receipt,
+        "usage": usage,
     }
 
 
@@ -790,7 +808,7 @@ async def routed_chat(req: RoutedChatRequest, request: Request, _key: dict = Dep
     # Cedar-driven routing
     route = cedar_route(context)
 
-    adapter, label = build_adapter(route["model"])
+    adapter, label, usage = build_adapter(route["model"])
     try:
         result = adapter.chat(req.message)
     except BadRequestError as e:
@@ -810,6 +828,7 @@ async def routed_chat(req: RoutedChatRequest, request: Request, _key: dict = Dep
         "claims": result.claims,
         "drift": result.drift,
         "receipt_hash": result.receipt.get("hash", ""),
+        "usage": usage,
     }
     _save_entry(entry)
 
@@ -823,6 +842,7 @@ async def routed_chat(req: RoutedChatRequest, request: Request, _key: dict = Dep
         "claims": result.claims,
         "drift": result.drift,
         "receipt": result.receipt,
+        "usage": usage,
     }
 
 
@@ -876,7 +896,7 @@ async def session_start(
     }
     route = cedar_route(context)
     try:
-        session, label = build_session(route["model"])
+        session, label, _ = build_session(route["model"])
     except ValueError as e:
         raise HTTPException(400, str(e))
 
@@ -925,7 +945,7 @@ async def session_send(
             "policy_hash": "",
         }
     try:
-        session, label = build_session(meta["model_name"], session_id=session_id)
+        session, label, usage = build_session(meta["model_name"], session_id=session_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
@@ -950,6 +970,7 @@ async def session_send(
         "cedar_status": receipt.cedar_status,
         "hash": receipt.hash,
         "chain_hash": receipt.chain_hash,
+        "usage": usage,
     }
 
 
@@ -1089,7 +1110,7 @@ async def audit(req: AuditRequest, request: Request, _key: dict = Depends(requir
     baseline = None
     if prompt:
         try:
-            adapter, label = build_adapter("deepseek-4-pro")
+            adapter, label, usage = build_adapter("deepseek-4-pro")
             baseline_result = adapter.chat(prompt)
             baseline = {
                 "model": label,
@@ -1097,6 +1118,7 @@ async def audit(req: AuditRequest, request: Request, _key: dict = Depends(requir
                 "drift": baseline_result.drift,
                 "claims": baseline_result.claims,
                 "receipt": baseline_result.receipt,
+                "usage": usage,
             }
         except Exception as e:
             baseline = {"error": str(e)}
