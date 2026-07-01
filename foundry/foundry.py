@@ -911,10 +911,13 @@ async def session_get(session_id: str, _key: dict = Depends(require_key)):
     if not receipts and not meta:
         raise HTTPException(404, f"Session not found: {session_id}")
     stats = _session_stats(session_id)
+    from helix_adapter.merkle import MerkleTree
+    tree = MerkleTree.from_leaves([r["hash"] for r in receipts]) if receipts else None
     return {
         "session_id": session_id,
         **meta,
         **stats,
+        "merkle_root": tree.root if tree else None,
         "receipts": receipts,
     }
 
@@ -937,6 +940,38 @@ async def session_delete(session_id: str, _key: dict = Depends(require_key)):
     SESSION_META.pop(session_id, None)
     _save_session_meta(SESSION_META)
     return {"deleted": session_id}
+
+
+@app.get("/session/{session_id}/merkle")
+async def session_merkle(session_id: str, _key: dict = Depends(require_key)):
+    """Current Merkle root and all historical roots for the session."""
+    receipts = FOUNDRY_STORE.get_session(session_id)
+    if not receipts:
+        raise HTTPException(404, f"Session not found: {session_id}")
+    from helix_adapter.merkle import MerkleTree
+    tree = MerkleTree.from_leaves([r["hash"] for r in receipts])
+    return {
+        "session_id": session_id,
+        "merkle_root": tree.root,
+        "leaf_count": tree.leaf_count,
+        "roots": tree.all_roots(),
+    }
+
+
+@app.get("/session/{session_id}/merkle/{turn}")
+async def session_merkle_proof(session_id: str, turn: int, _key: dict = Depends(require_key)):
+    """Merkle inclusion proof for a specific turn."""
+    receipts = FOUNDRY_STORE.get_session(session_id)
+    if not receipts:
+        raise HTTPException(404, f"Session not found: {session_id}")
+    from helix_adapter.merkle import MerkleTree
+    tree = MerkleTree.from_leaves([r["hash"] for r in receipts])
+    try:
+        proof = tree.proof(turn)
+    except IndexError as e:
+        raise HTTPException(400, str(e))
+    proof["valid"] = MerkleTree.verify(proof["leaf_hash"], proof["proof"], proof["root"])
+    return {"session_id": session_id, **proof}
 
 
 @app.get("/sessions")
