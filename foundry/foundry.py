@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from foundry_auth import require_key
 from openai import BadRequestError, OpenAI
 from pydantic import BaseModel
@@ -893,6 +893,12 @@ def _load_entries(limit: int = 100) -> list:
                 except json.JSONDecodeError:
                     pass
     return entries[-limit:]
+
+
+@app.get("/chat", response_class=RedirectResponse)
+@app.get("/chat/", response_class=RedirectResponse)
+async def chat_redirect():
+    return RedirectResponse(url="/routed-chat/", status_code=301)
 
 
 @app.post("/chat")
