@@ -312,9 +312,11 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; margin-right: 6px; vertical-align: middle; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .empty { color: var(--text-dim); font-style: italic; font-size: 14px; }
-  .nav { display: flex; gap: 4px; margin-bottom: 20px; }
+  .nav { display: flex; gap: 4px; margin-bottom: 20px; align-items: center; }
   .nav a { color: var(--text-dim); text-decoration: none; padding: 4px 12px; border-radius: var(--radius); font-size: 13px; border: 1px solid var(--border); }
   .nav a:hover, .nav a.active { color: var(--accent); border-color: var(--accent); background: #1a2332; }
+  .node-badge { margin-left: auto; display: flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+  .node-badge .node-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fact); flex-shrink: 0; }
   .ledger-entry { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 6px; font-size: 12px; }
   .ledger-entry .q { color: var(--accent); font-weight: 500; margin-bottom: 3px; }
   .ledger-entry .a { white-space: pre-wrap; color: var(--text); }
@@ -337,6 +339,7 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
 <body>
 <div id="keyGate" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:999;align-items:center;justify-content:center;flex-direction:column;gap:16px;">
   <div style="font-size:20px;font-weight:600;">&#9877; Helix Foundry</div>
+  <div>{node_badge}</div>
   <div style="color:var(--text-dim);font-size:13px;">Enter your API key to continue</div>
   <div style="display:flex;gap:8px;">
     <input id="keyInput" type="password" placeholder="hx-..." style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 14px;color:var(--text);font-size:13px;outline:none;width:320px;" onkeydown="if(event.key==='Enter')submitKey()">
@@ -353,6 +356,7 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
   <a href="/audit/">Audit</a>
   <a href="/sessions/">Sessions</a>
   <a href="/">Dashboard</a>
+  {node_badge}
 </div>
 
 <h1>&#9877; <span>Helix Foundry</span> &mdash; Cedar Routed Chat</h1>
@@ -860,6 +864,23 @@ class SessionSendRequest(BaseModel):
     message: str
 
 
+def _node_badge_html() -> str:
+    endpoint = _DEPLOY_ENDPOINT
+    name = os.environ.get("HELIX_DEPLOYMENT", "azure")
+    if "cn-beijing" in endpoint or "maas.aliyuncs.com" in endpoint or name.startswith("qwen-cn"):
+        flag, label, sub = "\U0001f1e8\U0001f1f3", "CN Node", "Sovereign/Local"
+    elif "dashscope-intl" in endpoint or name == "qwen-intl":
+        flag, label, sub = "\U0001f1f8\U0001f1ec", "SG Node", "Global/APAC"
+    else:
+        flag, label, sub = "\U0001f1e8\U0001f1e6", "CA Node", "Dev/Test"
+    return (
+        f'<span class="node-badge">'
+        f'<span class="node-dot"></span>'
+        f'{flag} <strong>{label}</strong>&nbsp;<span style="opacity:.6">{sub}</span>'
+        f'</span>'
+    )
+
+
 def _content_filter_label(e: BadRequestError) -> str:
     """Extract Azure content filter label from a BadRequestError, if present."""
     try:
@@ -946,7 +967,7 @@ async def chat(req: ChatRequest, request: Request, _key: dict = Depends(require_
 @app.head("/routed-chat")
 @app.head("/routed-chat/")
 async def routed_chat_page():
-    return ROUTED_CHAT_HTML
+    return ROUTED_CHAT_HTML.replace("{node_badge}", _node_badge_html())
 
 
 @app.post("/routed-chat")
