@@ -53,11 +53,11 @@ def extract_claims(text: str) -> list[dict]:
                     "[CONCLUSION]",
                 )
             ):
-                claims.append({"label": label, "text": before[:200]})
+                claims.append({"label": label, "text": before})
 
         seg = segment.strip().rstrip(".").strip()
         if seg and seg not in ("", "."):
-            claims.append({"label": label, "text": seg[:200]})
+            claims.append({"label": label, "text": seg})
 
     # Deduplicate
     seen = set()

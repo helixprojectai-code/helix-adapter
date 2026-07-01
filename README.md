@@ -268,17 +268,19 @@ Fail-closed: a missing or invalid policy file defaults to **deny**, not allow.
 
 ---
 
-## Helix Foundry (v1.4)
+## Helix Foundry (v1.6)
 
 A Cedar-routed multi-model inference pool. Cedar evaluates request context and routes
-to the optimal model — no classifier, no added latency.
+to the optimal model — no classifier, no added latency. Provider-agnostic — swap
+between Azure, Qwen, or any OpenAI-compatible backend via one env var.
 
-| Pool | Model | Trigger |
-|------|-------|---------|
-| `high_capability` | DeepSeek 4 Pro | complexity ≥ 8, tight drift |
-| `adversarial` | Grok 4.3 | bash / execute / shell |
-| `cost_optimized` | GPT-5.4 Nano | write_file / summarize / batch |
-| `sovereign` | Mistral Large 3 | fr / de / es / it / nl / pt locale |
+```bash
+HELIX_DEPLOYMENT=azure      python3 foundry.py   # Azure OpenAI
+HELIX_DEPLOYMENT=qwen-intl  python3 foundry.py   # Alibaba Cloud Model Studio
+```
+
+Pool routing is deployment-defined (`high_capability` / `adversarial` /
+`cost_optimized` / `sovereign`). See `foundry/deployments/` for per-provider config.
 
 ```bash
 cd foundry
