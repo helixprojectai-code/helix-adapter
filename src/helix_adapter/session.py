@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import time
 import uuid
 import warnings
@@ -45,6 +46,8 @@ try:
     from .cedar import CedarPolicy
 except ImportError:
     CedarPolicy = None
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -290,6 +293,81 @@ class HelixSession:
 
     def merkle_all_roots(self) -> list[dict]:
         return self._merkle.all_roots()
+
+    # ------------------------------------------------------------------ #
+    # Integrity check
+    # ------------------------------------------------------------------ #
+
+    def _compute_current_chain_hash(self) -> str:
+        """Rebuild the chain hash from stored receipts.
+
+        Reads all receipts from the store, recomputes the linear chain,
+        and returns the last chain_hash. Returns empty string if no
+        receipts exist.
+        """
+        receipts = self.store.get_session(self.session_id)
+        if not receipts:
+            return ""
+
+        chain = ""
+        for r in receipts:
+            chain = hashlib.sha256(
+                (chain + r["hash"]).encode()
+            ).hexdigest()
+        return chain
+
+    def merkle_consistency_check(self) -> bool:
+        """Validate chain_hash and Merkle tree are internally consistent.
+
+        Three checks:
+        1. Chain integrity — recompute chain_hash from stored receipts
+        2. Merkle integrity — rebuild tree from receipt hashes
+        3. Cross-check — verify each receipt's stored merkle_root matches
+           the tree root at its turn
+
+        Returns True if all checks pass (or no receipts to check).
+        Logs warnings on any mismatch.
+        """
+        receipts = self.store.get_session(self.session_id)
+        if not receipts:
+            return True
+
+        ok = True
+
+        # Check 1: Chain hash integrity
+        expected_chain = self._compute_current_chain_hash()
+        if expected_chain != self._last_chain_hash:
+            logger.warning(
+                f"Chain hash mismatch at turn {self._turn}. "
+                f"Expected: {expected_chain[:16]}..., "
+                f"Stored: {self._last_chain_hash[:16]}..."
+            )
+            ok = False
+
+        # Check 2: Merkle tree integrity — rebuild and compare root
+        leaf_hashes = [r["hash"] for r in receipts]
+        rebuilt = MerkleTree.from_leaves(leaf_hashes)
+        if rebuilt.root != self._merkle.root:
+            logger.warning(
+                f"Merkle root mismatch at turn {self._turn}. "
+                f"Rebuilt: {rebuilt.root[:16] if rebuilt.root else 'None'}..., "
+                f"Current: {self._merkle.root[:16] if self._merkle.root else 'None'}..."
+            )
+            ok = False
+
+        # Check 3: Cross-check each receipt's merkle_root
+        for i, r in enumerate(receipts):
+            stored_mr = r.get("merkle_root")
+            tree_root = rebuilt.root_at(i)
+            if stored_mr and tree_root and stored_mr != tree_root:
+                logger.warning(
+                    f"Receipt {i} merkle_root mismatch. "
+                    f"Stored: {stored_mr[:16]}..., "
+                    f"Tree: {tree_root[:16]}..."
+                )
+                ok = False
+
+        return ok
 
     @property
     def turn(self) -> int:
