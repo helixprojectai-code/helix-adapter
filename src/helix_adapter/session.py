@@ -92,6 +92,7 @@ class JointReceipt:
     # Chain
     hash: str
     chain_hash: str
+    merkle_root: Optional[str] = None
 
     def to_dict(self) -> dict:
         import dataclasses
@@ -245,6 +246,7 @@ class HelixSession:
         )
 
         merkle_root = self._merkle.append(receipt_hash)
+        receipt.merkle_root = merkle_root
 
         self.store.save({**receipt.to_dict(), "merkle_root": merkle_root})
         self._last_chain_hash = chain_hash

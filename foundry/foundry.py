@@ -1684,13 +1684,17 @@ async function showDetail(session_id) {
     }
     let html = '';
     for (const r of data.receipts) {
+      const mk = r.merkle_root ? r.merkle_root.substring(0,16) : '—';
       html += '<div class="receipt-row">' +
         '<div class="q">Turn '+r.turn+' &rarr; '+r.user_message.substring(0,120)+'</div>' +
         '<div class="a">'+r.assistant_response.substring(0,300)+(r.assistant_response.length>300?'…':'')+'</div>' +
         '<div class="meta">&gamma; '+r.drift_score.toFixed(3)+' '+r.drift_tier+
         ' &middot; hash: '+r.hash.substring(0,16)+
         ' &middot; chain: '+r.chain_hash.substring(0,16)+
+        ' &middot; merkle: '+mk+
+        ' <a href="#" onclick="showProof(\\''+session_id+'\\','+r.turn+');return false;" style="color:var(--accent);font-size:10px;">[proof]</a>'+
         ' &middot; '+r.timestamp+'</div>' +
+        '<div id="proof-'+r.turn+'" style="display:none;margin-top:6px;padding:6px;background:#0d1117;border:1px solid var(--border);border-radius:4px;font-size:10px;font-family:monospace;color:var(--text-dim);"></div>' +
         '</div>';
     }
     document.getElementById('detailReceipts').innerHTML = html;
@@ -1698,6 +1702,32 @@ async function showDetail(session_id) {
     document.getElementById('detailReceipts').innerHTML = '<span class="empty">Error: '+e.message+'</span>';
   }
   document.getElementById('detail').scrollIntoView({behavior:'smooth'});
+}
+
+async function showProof(session_id, turn) {
+  const el = document.getElementById('proof-'+turn);
+  if (el.style.display !== 'none') { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.innerHTML = '<span class="spinner"></span>';
+  try {
+    const resp = await fetch('/session/' + session_id + '/merkle/' + turn, {headers: {'X-API-Key': _apiKey}});
+    const data = await resp.json();
+    let html = '<b>Merkle Proof — Turn ' + turn + '</b><br>';
+    html += 'Leaf: ' + data.leaf_hash.substring(0,20) + '…<br>';
+    html += 'Root: ' + data.root.substring(0,20) + '…<br>';
+    html += 'Valid: ' + (data.valid ? '<span style="color:#238636;">✓ verified</span>' : '<span style="color:#da3633;">✗ INVALID</span>') + '<br>';
+    if (data.proof && data.proof.length) {
+      html += 'Path:<br>';
+      for (const s of data.proof) {
+        html += '&nbsp;&nbsp;' + s.position + ': ' + s.hash.substring(0,20) + '…<br>';
+      }
+    } else {
+      html += 'Path: (single leaf — root = leaf hash)<br>';
+    }
+    el.innerHTML = html;
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--uncertain);">Error: ' + e.message + '</span>';
+  }
 }
 
 async function deleteSession(session_id) {

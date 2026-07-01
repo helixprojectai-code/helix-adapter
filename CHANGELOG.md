@@ -40,6 +40,23 @@ changes to `HelixAdapter` or existing integrations.
   Computed as `sha256(hex(prev_chain_hash) + hex(this_hash))`. Turn 0 seeds
   with empty string. Breaks on any modification to prior receipt history.
 
+- **`MerkleTree`** (`src/helix_adapter/merkle.py`) — append-only binary Merkle
+  tree over receipt hashes. Duplicate-last padding (Bitcoin standard). Provides
+  `append()`, `root_at(turn)` for historical roots, `proof(turn)` for inclusion
+  proofs, and static `verify()` for standalone verification without a tree instance.
+
+- **`merkle_root` on `JointReceipt`** — each receipt now carries the Merkle root
+  at its turn, enabling dual tamper evidence: chain_hash detects linear tampering,
+  Merkle detects structural reordering.
+
+- **HelixSession Merkle methods** — `session.merkle_root` property, `merkle_proof(turn)`
+  for inclusion proofs, `merkle_all_roots()` for full root history. Tree is persisted
+  alongside receipts and rebuilt on `resume()`.
+
+- **`tests/test_merkle.py`** — 10-test suite covering single/multi-leaf trees,
+  historical roots, inclusion proofs and verification, tamper detection, reconstruction
+  from leaf list, and edge cases (empty tree, out-of-range proof).
+
 - **`DriftThreshold`** — configurable dataclass (`green`, `yellow`, `red` float
   thresholds) with `tier(score)` method. Defaults match v1.4 thresholds. Pass
   per-deployment instances to `HelixSession` for tuned tolerance.

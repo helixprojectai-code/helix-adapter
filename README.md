@@ -223,6 +223,17 @@ Every exchange produces a tamper-evident receipt. In sessions, receipts are chai
 `chain_hash` links every turn into a tamper-evident chain — modifying any prior receipt
 breaks all subsequent hashes.
 
+Each session is also backed by an **append-only Merkle tree**. Every turn appends its
+receipt hash as a leaf; the resulting root is stored per-turn. Use
+`session.merkle_proof(turn)` for an inclusion proof verifiable without the session
+instance:
+
+```python
+from helix_adapter import MerkleTree
+proof = session.merkle_proof(0)
+assert MerkleTree.verify(proof["leaf_hash"], proof["proof"], proof["root"])
+```
+
 ---
 
 ## Cedar Policy Gating (v1.4)

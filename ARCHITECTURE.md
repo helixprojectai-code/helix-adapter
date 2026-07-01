@@ -158,6 +158,35 @@ changes `chain_hash_K`, which changes `chain_hash_{K+1}` through `chain_hash_N`.
 The entire tail of the chain is invalidated. A receipt store that returns an
 unbroken chain to turn N proves no turn was altered after sealing.
 
+### Merkle Tree Layer
+
+Above the linear chain, each session maintains an **append-only binary Merkle
+tree**. Every receipt hash is appended as a leaf; the resulting root is stored
+per-turn.
+
+```text
+          root₃ = sha256(n₀ + n₁)
+         /                     \
+   n₀ = sha256(h₀ + h₁)    n₁ = sha256(h₂ + h₃)
+    /         \             /         \
+  h₀         h₁           h₂         h₃
+(leaf 0)   (leaf 1)    (leaf 2)   (leaf 3)
+```
+
+**Historical roots** are retained — `root_at(turn)` returns the root as it was
+when that leaf was added. This enables:
+
+- **Inclusion proofs** — `session.merkle_proof(turn)` returns a verification
+  path (sibling hashes + root) that proves a receipt was part of the chain
+- **Standalone verification** — `MerkleTree.verify(leaf_hash, proof, root)`
+  works with no tree instance, so auditors or downstream nodes can verify
+  without access to the session
+- **Dual tamper detection** — the linear chain_hash catches sequential
+  tampering; the Merkle tree catches structural reordering or partial replay
+
+Duplicate-last padding (Bitcoin standard) ensures a power-of-two tree for any
+leaf count. See `src/helix_adapter/merkle.py` for the implementation.
+
 ---
 
 ### Store Layer

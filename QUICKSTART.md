@@ -291,6 +291,41 @@ Every `session.send()` call returns a `JointReceipt`:
 The `chain_hash` links every turn in a session into a tamper-evident chain —
 modifying any prior receipt breaks all subsequent hashes.
 
+## Merkle Tree Integrity
+
+Each receipt chain is also backed by an append-only Merkle tree. Every
+`session.send()` appends the receipt hash as a leaf and stores the resulting
+root. This enables:
+
+- **Historical roots** — prove what the tree looked like at any prior turn
+- **Inclusion proofs** — verify any receipt is part of its session at a given
+  root (`session.merkle_proof(turn)`)
+- **Dual verification** — chain_hash detects linear tampering; Merkle detects
+  structural reordering
+
+```python
+# After sending a few turns
+session.send("What is quantum computing?")
+session.send("How does it relate to Bell's theorem?")
+
+# Get the current Merkle root
+print(session.merkle_root)           # hex digest
+
+# Get an inclusion proof for turn 0
+proof = session.merkle_proof(0)      # {turn, leaf_hash, proof, root, leaf_count}
+
+# Verify independently (no tree instance needed)
+from helix_adapter import MerkleTree
+assert MerkleTree.verify(
+    proof["leaf_hash"],
+    proof["proof"],
+    proof["root"],
+)
+```
+
+See `MerkleTree` in the API reference below — it is exported from
+`helix_adapter` and can be used standalone.
+
 ---
 
 ## Drift Thresholds
