@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """Helix Foundry — shared multi-model inference pool for Helix nodes.
 
-Hosts four Azure-native models behind the constitutional adapter.
-Nodes connect to a single endpoint, select their model, get drift-scored output.
-
-Models: deepseek-4-pro | grok-4.3 | gpt-5.4-nano | mistral-large-3
+Deployment is controlled by the HELIX_DEPLOYMENT env var.
+Config is loaded from foundry/deployments/<name>/models.json at startup.
 
 Usage:
-    pip install fastapi uvicorn openai helix-adapter
-    python3 foundry.py
+    HELIX_DEPLOYMENT=qwen-intl python3 foundry.py
+    HELIX_DEPLOYMENT=azure     python3 foundry.py   (default)
     # → http://localhost:8800
 
 API:
@@ -62,25 +60,29 @@ def _save_session_meta(meta: dict) -> None:
 
 SESSION_META: dict = _load_session_meta()
 
-# ── Model Registry (Azure-hosted, $20K dedicated credit) ──
-# Endpoint: helix-nodes-resource (standalone, separate from demo)
-# Key:  ~/foundry/.azure-key
+# ── Deployment Config ──
+# Loaded from deployments/<HELIX_DEPLOYMENT>/models.json at startup.
+# Swap providers by setting HELIX_DEPLOYMENT env var — no code changes.
 
-AZURE_ENDPOINT = "https://helix-nodes-resource.openai.azure.com/openai/v1"
-MISTRAL_ENDPOINT = "https://api.mistral.ai/v1"
+def _load_deployment() -> dict:
+    name = os.environ.get("HELIX_DEPLOYMENT", "azure")
+    cfg_path = HERE / "deployments" / name / "models.json"
+    if not cfg_path.exists():
+        raise RuntimeError(f"Deployment config not found: {cfg_path}")
+    return json.loads(cfg_path.read_text())
+
+
+_DEPLOY = _load_deployment()
+_DEPLOY_ENDPOINT = _DEPLOY["endpoint"]
+_DEPLOY_KEY_ENV = _DEPLOY["key_env"]
+_DEPLOY_AZURE = _DEPLOY.get("azure", False)
 
 # ── Cedar-Driven Model Routing ──
 # Policies evaluate context → ModelPool selection → target model.
 # Routing decision is auditable: policy hash + context snapshot → receipt.
 # Zero classifier latency — Cedar Rust bindings evaluate in microseconds.
 
-MODEL_POOL_MAP = {
-    "high_capability": "deepseek-4-pro",
-    "adversarial": "grok-4.3",
-    "cost_optimized": "gpt-5.4-nano",
-    "sovereign": "mistral-large-3",
-}
-
+MODEL_POOL_MAP: dict = _DEPLOY["pool_map"]
 MODEL_POOLS = list(MODEL_POOL_MAP.keys())
 
 
@@ -137,53 +139,22 @@ def cedar_route(context: dict) -> dict:
 
 
 # Legacy static map — used when Cedar is unavailable
-ACTION_MODEL_MAP = {
-    "bash": "grok-4.3",
-    "execute": "grok-4.3",
-    "api_call": "grok-4.3",
-    "analyze": "deepseek-4-pro",
-    "search": "deepseek-4-pro",
-    "reason": "deepseek-4-pro",
-    "write_file": "gpt-5.4-nano",
-    "edit_file": "gpt-5.4-nano",
-    "apply_patch": "gpt-5.4-nano",
-    "summarize": "gpt-5.4-nano",
-    "translate": "mistral-large-3",
-    "classify": "mistral-large-3",
-    "default": "deepseek-4-pro",
-}
+ACTION_MODEL_MAP: dict = _DEPLOY["action_map"]
 
 # ── End Routing ──
 
-MODELS = {
-    "deepseek-4-pro": {
-        "endpoint": AZURE_ENDPOINT,
-        "deployment": "DeepSeek-V4-Pro",
-        "key_env": "AZURE_OPENAI_FOUNDRY_KEY",
-        "label": "DeepSeek 4 Pro",
-        "temperature": 0.0,
-    },
-    "grok-4.3": {
-        "endpoint": AZURE_ENDPOINT,
-        "deployment": "grok-4.3",
-        "key_env": "AZURE_OPENAI_FOUNDRY_KEY",
-        "label": "Grok 4.3",
-        "temperature": 0.0,
-    },
-    "gpt-5.4-nano": {
-        "endpoint": AZURE_ENDPOINT,
-        "deployment": "gpt-5.4-nano",
-        "key_env": "AZURE_OPENAI_FOUNDRY_KEY",
-        "label": "GPT-5.4 Nano",
-        "temperature": 0.0,
-    },
-    "mistral-large-3": {
-        "endpoint": AZURE_ENDPOINT,
-        "deployment": "Mistral-Large-3",
-        "key_env": "AZURE_OPENAI_FOUNDRY_KEY",
-        "label": "Mistral Large 3",
-        "temperature": 0.0,
-    },
+# MODELS: name → {endpoint, deployment, key_env, label, temperature}
+# Assembled from deployment config — endpoint and key_env default to deployment globals.
+MODELS: dict = {
+    name: {
+        "endpoint": m.get("endpoint", _DEPLOY_ENDPOINT),
+        "deployment": m["deployment"],
+        "key_env": m.get("key_env", _DEPLOY_KEY_ENV),
+        "label": m["label"],
+        "temperature": m.get("temperature", 0.0),
+        "azure": m.get("azure", _DEPLOY_AZURE),
+    }
+    for name, m in _DEPLOY["models"].items()
 }
 
 
@@ -217,7 +188,7 @@ def build_adapter(model_name: str):
             "messages": messages,
             "temperature": cfg["temperature"],
         }
-        if "azure" in cfg["endpoint"] and "Mistral" not in depl:
+        if cfg.get("azure") and "Mistral" not in depl:
             kwargs["max_completion_tokens"] = 4096
         else:
             kwargs["max_tokens"] = 4096
@@ -256,7 +227,7 @@ def build_session(model_name: str, session_id: str | None = None) -> tuple["Heli
             "messages": messages,
             "temperature": cfg["temperature"],
         }
-        if "azure" in cfg["endpoint"] and "Mistral" not in depl:
+        if cfg.get("azure") and "Mistral" not in depl:
             kwargs["max_completion_tokens"] = 4096
         else:
             kwargs["max_tokens"] = 4096

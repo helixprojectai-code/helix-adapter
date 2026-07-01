@@ -1,0 +1,49 @@
+{
+  "endpoint": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+  "key_env": "QWEN_API_KEY",
+  "azure": false,
+  "pool_map": {
+    "high_capability": "qwen-max",
+    "adversarial":     "qwen-plus",
+    "cost_optimized":  "qwen-turbo",
+    "sovereign":       "qwen-long"
+  },
+  "action_map": {
+    "bash":        "qwen-plus",
+    "execute":     "qwen-plus",
+    "api_call":    "qwen-plus",
+    "shell":       "qwen-plus",
+    "analyze":     "qwen-max",
+    "search":      "qwen-max",
+    "reason":      "qwen-max",
+    "write_file":  "qwen-turbo",
+    "edit_file":   "qwen-turbo",
+    "apply_patch": "qwen-turbo",
+    "summarize":   "qwen-turbo",
+    "translate":   "qwen-long",
+    "classify":    "qwen-long",
+    "default":     "qwen-max"
+  },
+  "models": {
+    "qwen-max": {
+      "deployment": "qwen-max",
+      "label": "Qwen Max",
+      "temperature": 0.0
+    },
+    "qwen-plus": {
+      "deployment": "qwen-plus",
+      "label": "Qwen Plus",
+      "temperature": 0.0
+    },
+    "qwen-turbo": {
+      "deployment": "qwen-turbo",
+      "label": "Qwen Turbo",
+      "temperature": 0.0
+    },
+    "qwen-long": {
+      "deployment": "qwen-long",
+      "label": "Qwen Long",
+      "temperature": 0.0
+    }
+  }
+}
