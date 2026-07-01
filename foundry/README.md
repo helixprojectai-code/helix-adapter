@@ -1,17 +1,33 @@
 # Helix Foundry
 
-Shared multi-model inference pool for Helix nodes. Four Azure-native models
-behind the constitutional adapter. Cedar-driven routing with static action-map
-fallback. Every response drift-scored and receipt-sealed.
+Shared multi-model inference pool for Helix nodes. Provider-agnostic — swap
+between Azure, Qwen, or any OpenAI-compatible backend via one env var.
+Cedar-driven routing with static action-map fallback. Every response
+drift-scored and receipt-sealed.
 
-## Models
+## Deployment Config
 
-| Model | Pool | Trigger | Drift Profile |
-|---|---|---|---|
-| DeepSeek 4 Pro | high_capability | default / analyze / search / reason | analytical depth |
-| Grok 4.3 | adversarial | bash / execute / api_call | adversarial resilience |
-| GPT-5.4 Nano | cost_optimized | write_file / summarize / batch | low-drift bracket discipline |
-| Mistral Large 3 | sovereign | fr / de / es / it / nl / pt locale | multilingual |
+Models, endpoints, and pool assignments are defined per deployment:
+
+    foundry/deployments/
+      azure/          # Azure OpenAI (DeepSeek, Grok, GPT, Mistral)
+      qwen-intl/      # Alibaba Cloud Model Studio, Singapore endpoint
+
+Select a deployment at startup:
+
+    HELIX_DEPLOYMENT=qwen-intl python3 foundry.py
+
+Each deployment directory contains `models.json` (pool map, action map, model
+list) and `.env.example`. The default is `azure` if `HELIX_DEPLOYMENT` is unset.
+
+Pool assignments (pool → model) are deployment-defined. Typical layout:
+
+| Pool | Trigger |
+|---|---|
+| `high_capability` | complexity ≥ 8, tight drift |
+| `adversarial` | bash / execute / api_call |
+| `cost_optimized` | write_file / summarize / batch |
+| `sovereign` | locale / long-doc / regulatory |
 
 ## Endpoints
 
@@ -39,10 +55,17 @@ Cedar policies live in `routing.cedar` with a schema in `routing.schema`.
     pip install fastapi uvicorn openai helix-adapter
     python3 foundry.py [port]
 
-Set API keys in `~/.hermes/.env`:
+Set deployment and API key:
 
+    # Azure
+    HELIX_DEPLOYMENT=azure
     AZURE_OPENAI_FOUNDRY_KEY=...
-    MISTRAL_API_KEY=...
+
+    # Qwen (Alibaba Cloud Model Studio)
+    HELIX_DEPLOYMENT=qwen-intl
+    QWEN_API_KEY=...
+
+See `foundry/deployments/<name>/.env.example` for full variable reference.
 
 Systemd service included for persistent deployment.
 
