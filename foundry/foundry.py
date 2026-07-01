@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """Helix Foundry — shared multi-model inference pool for Helix nodes.
 
-Hosts four Azure-native models behind the constitutional adapter.
-Nodes connect to a single endpoint, select their model, get drift-scored output.
-
-Models: deepseek-4-pro | grok-4.3 | gpt-5.4-nano | mistral-large-3
+Deployment is controlled by the HELIX_DEPLOYMENT env var.
+Config is loaded from foundry/deployments/<name>/models.json at startup.
 
 Usage:
-    pip install fastapi uvicorn openai helix-adapter
-    python3 foundry.py
+    HELIX_DEPLOYMENT=qwen-intl python3 foundry.py
+    HELIX_DEPLOYMENT=azure     python3 foundry.py   (default)
     # → http://localhost:8800
 
 API:
@@ -26,7 +24,7 @@ import time
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from foundry_auth import require_key
 from openai import BadRequestError, OpenAI
 from pydantic import BaseModel
@@ -62,25 +60,29 @@ def _save_session_meta(meta: dict) -> None:
 
 SESSION_META: dict = _load_session_meta()
 
-# ── Model Registry (Azure-hosted, $20K dedicated credit) ──
-# Endpoint: helix-nodes-resource (standalone, separate from demo)
-# Key:  ~/foundry/.azure-key
+# ── Deployment Config ──
+# Loaded from deployments/<HELIX_DEPLOYMENT>/models.json at startup.
+# Swap providers by setting HELIX_DEPLOYMENT env var — no code changes.
 
-AZURE_ENDPOINT = "https://helix-nodes-resource.openai.azure.com/openai/v1"
-MISTRAL_ENDPOINT = "https://api.mistral.ai/v1"
+def _load_deployment() -> dict:
+    name = os.environ.get("HELIX_DEPLOYMENT", "azure")
+    cfg_path = HERE / "deployments" / name / "models.json"
+    if not cfg_path.exists():
+        raise RuntimeError(f"Deployment config not found: {cfg_path}")
+    return json.loads(cfg_path.read_text())
+
+
+_DEPLOY = _load_deployment()
+_DEPLOY_ENDPOINT = _DEPLOY["endpoint"]
+_DEPLOY_KEY_ENV = _DEPLOY["key_env"]
+_DEPLOY_AZURE = _DEPLOY.get("azure", False)
 
 # ── Cedar-Driven Model Routing ──
 # Policies evaluate context → ModelPool selection → target model.
 # Routing decision is auditable: policy hash + context snapshot → receipt.
 # Zero classifier latency — Cedar Rust bindings evaluate in microseconds.
 
-MODEL_POOL_MAP = {
-    "high_capability": "deepseek-4-pro",
-    "adversarial": "grok-4.3",
-    "cost_optimized": "gpt-5.4-nano",
-    "sovereign": "mistral-large-3",
-}
-
+MODEL_POOL_MAP: dict = _DEPLOY["pool_map"]
 MODEL_POOLS = list(MODEL_POOL_MAP.keys())
 
 
@@ -137,53 +139,22 @@ def cedar_route(context: dict) -> dict:
 
 
 # Legacy static map — used when Cedar is unavailable
-ACTION_MODEL_MAP = {
-    "bash": "grok-4.3",
-    "execute": "grok-4.3",
-    "api_call": "grok-4.3",
-    "analyze": "deepseek-4-pro",
-    "search": "deepseek-4-pro",
-    "reason": "deepseek-4-pro",
-    "write_file": "gpt-5.4-nano",
-    "edit_file": "gpt-5.4-nano",
-    "apply_patch": "gpt-5.4-nano",
-    "summarize": "gpt-5.4-nano",
-    "translate": "mistral-large-3",
-    "classify": "mistral-large-3",
-    "default": "deepseek-4-pro",
-}
+ACTION_MODEL_MAP: dict = _DEPLOY["action_map"]
 
 # ── End Routing ──
 
-MODELS = {
-    "deepseek-4-pro": {
-        "endpoint": AZURE_ENDPOINT,
-        "deployment": "DeepSeek-V4-Pro",
-        "key_env": "AZURE_OPENAI_FOUNDRY_KEY",
-        "label": "DeepSeek 4 Pro",
-        "temperature": 0.0,
-    },
-    "grok-4.3": {
-        "endpoint": AZURE_ENDPOINT,
-        "deployment": "grok-4.3",
-        "key_env": "AZURE_OPENAI_FOUNDRY_KEY",
-        "label": "Grok 4.3",
-        "temperature": 0.0,
-    },
-    "gpt-5.4-nano": {
-        "endpoint": AZURE_ENDPOINT,
-        "deployment": "gpt-5.4-nano",
-        "key_env": "AZURE_OPENAI_FOUNDRY_KEY",
-        "label": "GPT-5.4 Nano",
-        "temperature": 0.0,
-    },
-    "mistral-large-3": {
-        "endpoint": AZURE_ENDPOINT,
-        "deployment": "Mistral-Large-3",
-        "key_env": "AZURE_OPENAI_FOUNDRY_KEY",
-        "label": "Mistral Large 3",
-        "temperature": 0.0,
-    },
+# MODELS: name → {endpoint, deployment, key_env, label, temperature}
+# Assembled from deployment config — endpoint and key_env default to deployment globals.
+MODELS: dict = {
+    name: {
+        "endpoint": m.get("endpoint", _DEPLOY_ENDPOINT),
+        "deployment": m["deployment"],
+        "key_env": m.get("key_env", _DEPLOY_KEY_ENV),
+        "label": m["label"],
+        "temperature": m.get("temperature", 0.0),
+        "azure": m.get("azure", _DEPLOY_AZURE),
+    }
+    for name, m in _DEPLOY["models"].items()
 }
 
 
@@ -217,7 +188,7 @@ def build_adapter(model_name: str):
             "messages": messages,
             "temperature": cfg["temperature"],
         }
-        if "azure" in cfg["endpoint"] and "Mistral" not in depl:
+        if cfg.get("azure") and "Mistral" not in depl:
             kwargs["max_completion_tokens"] = 4096
         else:
             kwargs["max_tokens"] = 4096
@@ -256,7 +227,7 @@ def build_session(model_name: str, session_id: str | None = None) -> tuple["Heli
             "messages": messages,
             "temperature": cfg["temperature"],
         }
-        if "azure" in cfg["endpoint"] and "Mistral" not in depl:
+        if cfg.get("azure") and "Mistral" not in depl:
             kwargs["max_completion_tokens"] = 4096
         else:
             kwargs["max_tokens"] = 4096
@@ -295,10 +266,15 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
     --fact: #238636; --reasoned: #58a6ff; --hypothesis: #d29922;
     --uncertain: #da3633; --conclusion: #8b6cef;
     --accent: #58a6ff; --radius: 8px;
+    --shield: #238636; --shield-bg: #0d2b1a;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
-  .container { max-width: 900px; margin: 0 auto; padding: 24px; }
+  .container { max-width: 1280px; margin: 0 auto; padding: 24px; }
+  .layout { display: flex; gap: 16px; align-items: flex-start; }
+  .col-main { flex: 1 1 0; min-width: 0; }
+  .col-side { width: 340px; flex-shrink: 0; position: sticky; top: 16px; }
+  @media (max-width: 900px) { .layout { flex-direction: column; } .col-side { width: 100%; position: static; } }
   h1 { font-size: 24px; margin-bottom: 4px; }
   h1 span { color: var(--accent); }
   .subtitle { color: var(--text-dim); font-size: 13px; margin-bottom: 20px; }
@@ -317,10 +293,17 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
   .input-row select { min-width: 140px; }
   .input-row button { background: var(--accent); color: #000; border: none; border-radius: var(--radius); padding: 8px 20px; font-weight: 600; cursor: pointer; font-size: 13px; }
   .input-row button:disabled { opacity: 0.5; cursor: default; }
-  .route-badge { display: inline-flex; align-items: center; gap: 8px; background: #1a2332; border: 1px solid var(--accent); border-radius: var(--radius); padding: 6px 14px; font-size: 12px; margin-bottom: 12px; }
+  .complexity-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 12px; color: var(--text-dim); }
+  .complexity-row input[type=range] { flex: 1; accent-color: var(--accent); }
+  .complexity-row .val { font-family: monospace; color: var(--text); min-width: 18px; text-align: right; }
+  .route-badge { display: inline-flex; align-items: center; gap: 8px; background: #1a2332; border: 1px solid var(--accent); border-radius: var(--radius); padding: 6px 14px; font-size: 12px; margin-bottom: 8px; }
   .route-badge .model { font-weight: 700; color: var(--accent); }
   .route-badge .pool { color: var(--text-dim); }
   .route-badge .hash { font-family: monospace; font-size: 10px; color: var(--text-dim); }
+  .integrity-badge { display: inline-flex; align-items: center; gap: 8px; background: var(--shield-bg); border: 1px solid var(--shield); border-radius: var(--radius); padding: 5px 12px; font-size: 11px; font-weight: 600; color: #3fb950; margin-bottom: 8px; }
+  .integrity-badge .shield { font-size: 14px; }
+  .integrity-badge .sep { color: #30363d; margin: 0 2px; }
+  .integrity-badge.partial { border-color: #d29922; background: #2b1e0d; color: #d29922; }
   .drift-bar { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
   .drift-track { width: 60px; height: 6px; background: #21262d; border-radius: 3px; overflow: hidden; display: inline-block; }
   .drift-fill { height: 100%; border-radius: 3px; transition: width .3s, background .3s; }
@@ -337,6 +320,18 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
   .ledger-entry .a { white-space: pre-wrap; color: var(--text); }
   .ledger-entry .meta { font-size: 10px; color: var(--text-dim); margin-top: 4px; }
   hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+  .log-pre { font-size: 10px; font-family: monospace; white-space: pre-wrap; word-break: break-all; max-height: 340px; overflow-y: auto; color: var(--text-dim); line-height: 1.5; }
+  .log-pre .j-key { color: #79c0ff; }
+  .log-pre .j-str { color: #a5d6ff; }
+  .log-pre .j-num { color: #f0883e; }
+  .log-pre .j-bool { color: #d2a8ff; }
+  .log-pre .j-null { color: var(--text-dim); }
+  .log-pre .j-marker-fact { color: #3fb950; font-weight: 700; }
+  .log-pre .j-marker-reasoned { color: #58a6ff; font-weight: 700; }
+  .log-pre .j-marker-hypothesis { color: #d29922; font-weight: 700; }
+  .log-pre .j-marker-uncertain { color: #da3633; font-weight: 700; }
+  .log-pre .j-marker-conclusion { color: #8b6cef; font-weight: 700; }
+  .merkle-root { font-family: monospace; font-size: 10px; color: #3fb950; word-break: break-all; background: var(--shield-bg); border: 1px solid var(--shield); border-radius: 4px; padding: 4px 8px; margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -361,14 +356,17 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
 </div>
 
 <h1>&#9877; <span>Helix Foundry</span> &mdash; Cedar Routed Chat</h1>
-<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-<p class="subtitle" style="margin-bottom:0;">Action-context routing: your action determines which model handles the query. Cedar Decision Mesh available with native library install — static action→model map as zero-latency fallback. Every response drift-scored, receipt-sealed.</p>
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+<p class="subtitle" style="margin-bottom:0;">Cedar routes each request to the right model pool. Every response is drift-scored, receipt-sealed, and Merkle-verified.</p>
 <div style="flex:1;"></div>
 <select id="exportSelector" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;max-width:200px;">
   <option value="all">All entries</option>
 </select>
 <button id="exportBtn" style="background:var(--surface);color:var(--text-dim);border:1px solid var(--border);border-radius:var(--radius);padding:2px 10px;cursor:pointer;font-size:11px;">Export</button>
 </div>
+
+<div class="layout">
+<div class="col-main">
 
 <div class="card">
   <h2>Send Message</h2>
@@ -379,6 +377,17 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
     </label>
     <span id="sessionBadge" style="display:none;font-size:11px;font-family:monospace;background:#1a2332;border:1px solid var(--accent);border-radius:4px;padding:2px 8px;color:var(--accent);"></span>
     <button id="endSessionBtn" onclick="endSession()" style="display:none;background:var(--uncertain);color:#fff;border:none;border-radius:var(--radius);padding:3px 10px;font-size:11px;cursor:pointer;">End Session</button>
+  </div>
+  <div class="complexity-row">
+    <span>complexity</span>
+    <input type="range" id="complexitySlider" min="1" max="10" value="5" oninput="document.getElementById('complexityVal').textContent=this.value">
+    <span class="val" id="complexityVal">5</span>
+    <span style="margin-left:12px;">drift tol.</span>
+    <select id="driftSelect" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 6px;color:var(--text);font-size:11px;">
+      <option value="0.03">strict 0.03</option>
+      <option value="0.10" selected>normal 0.10</option>
+      <option value="0.20">loose 0.20</option>
+    </select>
   </div>
   <div class="input-row">
     <input id="msgInput" type="text" placeholder="Ask anything..." autofocus onkeydown="if(event.key==='Enter')send()">
@@ -401,6 +410,7 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
 </div>
 
 <div id="result" class="card" style="display:none;">
+  <div id="integrityBadge"></div>
   <div id="routeInfo"></div>
   <div id="responseText" class="response-body"></div>
   <div id="metaInfo" class="meta-row"></div>
@@ -415,6 +425,30 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
   <div id="ledger"><span class="empty">Loading...</span></div>
 </div>
 
+</div><!-- /col-main -->
+
+<div class="col-side">
+  <div class="card">
+    <h2>&#128200; Cost vs Complexity</h2>
+    <div id="costChart"></div>
+    <div style="margin-top:8px;font-size:10px;color:var(--text-dim);display:flex;gap:10px;flex-wrap:wrap;">
+      <span><span style="color:#3fb950;">&#9632;</span> high_cap</span>
+      <span><span style="color:#d29922;">&#9632;</span> adversarial</span>
+      <span><span style="color:#58a6ff;">&#9632;</span> cost_opt</span>
+      <span><span style="color:#8b6cef;">&#9632;</span> sovereign</span>
+    </div>
+  </div>
+  <div class="card">
+    <h2>&#128196; Constitutional Log</h2>
+    <div id="merkleDisplay" style="display:none;">
+      <div style="font-size:10px;color:var(--text-dim);margin-bottom:4px;">merkle root</div>
+      <div id="merkleRoot" class="merkle-root"></div>
+    </div>
+    <div id="receiptLog" class="log-pre" style="margin-top:10px;"><span class="empty">Send a message to see the receipt.</span></div>
+  </div>
+</div><!-- /col-side -->
+
+</div><!-- /layout -->
 </div>
 <script>
 const API = '/routed-chat';
@@ -424,6 +458,115 @@ let _sessionMode = false;
 let _sessionId = null;
 let _sessionTurn = 0;
 let _sessionModel = null;
+let _chartData = [];
+
+const POOL_COLORS = {
+  high_capability: '#3fb950',
+  adversarial:     '#d29922',
+  cost_optimized:  '#58a6ff',
+  sovereign:       '#8b6cef',
+  static:          '#8b949e',
+};
+
+function initChart() { renderChart(); }
+
+function updateChart(complexity, tokens, pool, label) {
+  _chartData.push({ x: complexity, y: tokens, pool, label });
+  renderChart();
+}
+
+function renderChart() {
+  const W = 300, H = 180, PAD = { t: 10, r: 10, b: 32, l: 42 };
+  const iW = W - PAD.l - PAD.r, iH = H - PAD.t - PAD.b;
+  const maxY = _chartData.length ? Math.max(200, ..._chartData.map(d => d.y)) : 200;
+  function sx(v) { return PAD.l + (v / 10) * iW; }
+  function sy(v) { return PAD.t + iH - (v / maxY) * iH; }
+
+  let gridLines = '';
+  [0, 2, 4, 6, 8, 10].forEach(x => {
+    const px = sx(x);
+    gridLines += '<line x1="'+px+'" y1="'+PAD.t+'" x2="'+px+'" y2="'+(PAD.t+iH)+'" stroke="#21262d" stroke-width="1"/>';
+    gridLines += '<text x="'+px+'" y="'+(PAD.t+iH+14)+'" fill="#8b949e" font-size="9" text-anchor="middle">'+x+'</text>';
+  });
+  [0, Math.round(maxY/2), maxY].forEach(y => {
+    const py = sy(y);
+    gridLines += '<line x1="'+PAD.l+'" y1="'+py+'" x2="'+(PAD.l+iW)+'" y2="'+py+'" stroke="#21262d" stroke-width="1"/>';
+    gridLines += '<text x="'+(PAD.l-4)+'" y="'+(py+3)+'" fill="#8b949e" font-size="9" text-anchor="end">'+y+'</text>';
+  });
+
+  const dots = _chartData.map(d => {
+    const c = POOL_COLORS[d.pool] || '#8b949e';
+    return '<circle cx="'+sx(d.x)+'" cy="'+sy(d.y)+'" r="5" fill="'+c+'" opacity="0.85"><title>'+d.label+' · complexity '+d.x+' · '+d.y+' tokens</title></circle>';
+  }).join('');
+
+  const axisLabels =
+    '<text x="'+(PAD.l+iW/2)+'" y="'+(H-2)+'" fill="#8b949e" font-size="9" text-anchor="middle">complexity</text>' +
+    '<text x="10" y="'+(PAD.t+iH/2)+'" fill="#8b949e" font-size="9" text-anchor="middle" transform="rotate(-90,10,'+(PAD.t+iH/2)+')">tokens</text>';
+
+  const empty = _chartData.length === 0
+    ? '<text x="'+(W/2)+'" y="'+(H/2)+'" fill="#8b949e" font-size="11" text-anchor="middle">send messages to populate</text>' : '';
+
+  document.getElementById('costChart').innerHTML =
+    '<svg width="'+W+'" height="'+H+'" style="display:block;background:#0d1117;border-radius:6px;">' +
+    gridLines + dots + axisLabels + empty + '</svg>';
+}
+
+function renderIntegrityBadge(data) {
+  const el = document.getElementById('integrityBadge');
+  const hasMerkle = data.receipt && data.receipt.merkle_root;
+  const hasChain = data.receipt && data.receipt.chain_hash;
+  const hasHash = (data.receipt && data.receipt.hash) || data.hash;
+  if (hasMerkle && hasChain) {
+    el.innerHTML = '<div class="integrity-badge"><span class="shield">&#x1F6E1;&#xFE0F;</span> Merkle Verified <span class="sep">|</span> Chain Intact</div>';
+  } else if (hasHash) {
+    el.innerHTML = '<div class="integrity-badge partial"><span class="shield">&#x1F512;</span> Receipt Sealed</div>';
+  } else {
+    el.innerHTML = '';
+  }
+}
+
+function colorizeJson(json) {
+  const markerMap = {
+    '[FACT]':'fact','[REASONED]':'reasoned',
+    '[HYPOTHESIS]':'hypothesis','[UNCERTAIN]':'uncertain','[CONCLUSION]':'conclusion'
+  };
+  let s = json.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  s = s.replace(/"([^"]*)"(\\s*:)/g, '<span class="j-key">"$1"</span>$2');
+  s = s.replace(/: "([^"]*)"/g, ': "<span class="j-str">$1</span>"');
+  s = s.replace(/: (-?[0-9]+\\.?[0-9]*)/g, ': <span class="j-num">$1</span>');
+  s = s.replace(/: (true|false)/g, ': <span class="j-bool">$1</span>');
+  s = s.replace(/: (null)/g, ': <span class="j-null">$1</span>');
+  Object.entries(markerMap).forEach(([tag, cls]) => {
+    s = s.split(tag).join('<span class="j-marker-'+cls+'">'+tag+'</span>');
+  });
+  return s;
+}
+
+function updateConstitutionalLog(data) {
+  const receipt = data.receipt || { hash: data.hash, chain_hash: data.chain_hash, merkle_root: data.merkle_root };
+  const merkleRoot = receipt.merkle_root || null;
+  const logEl = document.getElementById('receiptLog');
+  const merkleEl = document.getElementById('merkleDisplay');
+  const merkleRootEl = document.getElementById('merkleRoot');
+  if (merkleRoot) {
+    merkleEl.style.display = 'block';
+    merkleRootEl.textContent = merkleRoot;
+  } else {
+    merkleEl.style.display = 'none';
+  }
+  const slim = {
+    model: data.label || data.model,
+    pool: data.pool,
+    policy_hash: data.policy_hash,
+    drift: data.drift !== undefined ? data.drift : data.drift_score,
+    claims: data.claims,
+    usage: data.usage,
+    hash: receipt.hash,
+    chain_hash: receipt.chain_hash || null,
+    merkle_root: merkleRoot,
+  };
+  logEl.innerHTML = colorizeJson(JSON.stringify(slim, null, 2));
+}
 
 function getApiKey() { return _apiKey; }
 
@@ -452,6 +595,7 @@ function showKeyForm() {
 function showApp() {
   document.getElementById('keyGate').style.display = 'none';
   document.getElementById('appContent').style.display = 'block';
+  initChart();
   loadLedger();
 }
 
@@ -558,6 +702,8 @@ async function send() {
   const msg = document.getElementById('msgInput').value.trim();
   if (!msg) return;
   const action = document.getElementById('actionSelect').value;
+  const complexity = parseInt(document.getElementById('complexitySlider').value);
+  const driftTol = parseFloat(document.getElementById('driftSelect').value);
   const btn = document.getElementById('sendBtn');
   btn.disabled = true;
   document.getElementById('loading').style.display = 'block';
@@ -566,7 +712,6 @@ async function send() {
   try {
     let data;
     if (_sessionMode) {
-      // Start session on first message
       if (!_sessionId) {
         const sess = await _startSession(action);
         _sessionId = sess.session_id;
@@ -575,7 +720,6 @@ async function send() {
         document.getElementById('sessionBadge').style.display = 'inline';
         document.getElementById('endSessionBtn').style.display = 'inline';
       }
-      // Send turn
       const resp = await fetch('/session/' + _sessionId + '/send', {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-API-Key': getApiKey()},
@@ -592,16 +736,20 @@ async function send() {
         '<span class="hash">chain #' + (data.chain_hash||'').substring(0,10) + '</span>' +
         '</div>';
       document.getElementById('responseText').textContent = data.response || '(empty)';
+      const tokens = data.usage ? data.usage.total_tokens : null;
       document.getElementById('metaInfo').innerHTML =
         '<span class="drift-bar">drift <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+driftColor(data.drift_score||0)+';"></span></span> &gamma; '+(data.drift_score||0).toFixed(3)+'</span>' +
         renderClaims(data.claims) +
-        '<span style="font-family:monospace;font-size:10px;">receipt #'+(data.hash||'?').substring(0,10)+'</span>';
+        '<span style="font-family:monospace;font-size:10px;">receipt #'+(data.hash||'?').substring(0,10)+'</span>' +
+        (tokens ? '<span style="color:var(--text-dim);">&#128196; '+tokens+' tok</span>' : '');
+      renderIntegrityBadge(data);
+      updateConstitutionalLog(data);
+      if (tokens) updateChart(complexity, tokens, data.pool || 'static', data.model || _sessionModel);
     } else {
-      // Stateless single-turn (existing behaviour)
       const resp = await fetch(API, {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-API-Key': getApiKey()},
-        body: JSON.stringify({action: action, message: msg})
+        body: JSON.stringify({action: action, message: msg, task_complexity: complexity, drift_tolerance: driftTol})
       });
       data = await resp.json();
 
@@ -612,10 +760,15 @@ async function send() {
         '<span class="hash">#'+(data.policy_hash||'fallback').substring(0,12)+'</span>' +
         '</div>';
       document.getElementById('responseText').textContent = data.response || '(empty)';
+      const tokens = data.usage ? data.usage.total_tokens : null;
       document.getElementById('metaInfo').innerHTML =
         '<span class="drift-bar">drift <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+driftColor(data.drift||0)+';"></span></span> &gamma; '+(data.drift||0).toFixed(3)+'</span>' +
         renderClaims(data.claims) +
-        '<span style="font-family:monospace;font-size:10px;">receipt #'+(data.receipt?.hash||'?').substring(0,10)+'</span>';
+        '<span style="font-family:monospace;font-size:10px;">receipt #'+(data.receipt?.hash||'?').substring(0,10)+'</span>' +
+        (tokens ? '<span style="color:var(--text-dim);">&#128196; '+tokens+' tok</span>' : '');
+      renderIntegrityBadge(data);
+      updateConstitutionalLog(data);
+      if (tokens) updateChart(data.task_complexity || complexity, tokens, data.pool, data.label);
       loadLedger();
     }
 
@@ -624,6 +777,7 @@ async function send() {
     document.getElementById('routeInfo').innerHTML = '<span style="color:var(--uncertain)">Error: '+e.message+'</span>';
     document.getElementById('responseText').textContent = '';
     document.getElementById('metaInfo').innerHTML = '';
+    document.getElementById('integrityBadge').innerHTML = '';
     document.getElementById('result').style.display = 'block';
   }
 
@@ -741,6 +895,12 @@ def _load_entries(limit: int = 100) -> list:
     return entries[-limit:]
 
 
+@app.get("/chat", response_class=RedirectResponse)
+@app.get("/chat/", response_class=RedirectResponse)
+async def chat_redirect():
+    return RedirectResponse(url="/routed-chat/", status_code=301)
+
+
 @app.post("/chat")
 async def chat(req: ChatRequest, request: Request, _key: dict = Depends(require_key)):
     _check_rate_limit(request)
@@ -843,6 +1003,7 @@ async def routed_chat(req: RoutedChatRequest, request: Request, _key: dict = Dep
         "drift": result.drift,
         "receipt": result.receipt,
         "usage": usage,
+        "task_complexity": req.task_complexity,
     }
 
 
@@ -1582,24 +1743,21 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   <p style="margin:0 0 10px;font-size:13px;">Cedar evaluates the context fields you send and routes to the best-fit pool. No match defaults to <strong>high_capability</strong>.</p>
   <table>
     <tr><th>Pool</th><th>Model</th><th>Routes when</th></tr>
-    <tr><td>high_capability</td><td>DeepSeek 4 Pro</td><td><code>task_complexity &ge; 8</code> and <code>drift_tolerance &lt; 0.05</code></td></tr>
-    <tr><td>adversarial</td><td>Grok 4.3</td><td><code>action_type</code> is <code>bash</code> / <code>execute</code> / <code>api_call</code> / <code>shell</code></td></tr>
-    <tr><td>cost_optimized</td><td>GPT-5.4 Nano</td><td><code>priority: batch</code> and <code>drift_tolerance &ge; 0.10</code></td></tr>
-    <tr><td>sovereign</td><td>Mistral Large 3</td><td><code>locale</code> is <code>fr</code> / <code>de</code> / <code>es</code> / <code>it</code> / <code>nl</code> / <code>bg</code> / <code>fa</code> / <code>ur</code> / &hellip;</td></tr>
+    {routing_rows}
   </table>
 </div>
 <div class="card" style="margin-top:16px;">
   <h2>Endpoints</h2>
   <table>
     <tr><th>Endpoint</th><th>Method</th><th>What it does</th></tr>
-    <tr><td><code>/chat</code></td><td>POST</td><td>Direct model call &mdash; <code>{"model": "deepseek-4-pro", "message": "..."}</code></td></tr>
+    <tr><td><code>/chat</code></td><td>POST</td><td>Direct model call &mdash; <code>{"model": "{default_model}", "message": "..."}</code></td></tr>
     <tr><td><code>/routed-chat/</code></td><td>POST / GET</td><td>Cedar-routed call &mdash; optional context fields: <code>task_complexity</code>, <code>drift_tolerance</code>, <code>action_type</code>, <code>priority</code>, <code>locale</code></td></tr>
     <tr><td><code>/audit/</code></td><td>GET</td><td>Paste any model response to score drift, extract claims, verify receipt</td></tr>
     <tr><td><code>/health</code></td><td>GET</td><td>Per-model status and drift &mdash; returns JSON</td></tr>
   </table>
   <p style="margin:12px 0 0;font-size:12px;color:var(--text-dim);">Every response is drift-scored and receipt-sealed. The <code>cedar</code> block in each receipt records gate status: <code>active</code> &middot; <code>fail_closed</code> &middot; <code>not_configured</code>.</p>
 </div>
-<p class="footer">DeepSeek 4 Pro &middot; Grok 4.3 &middot; GPT-5.4 Nano &middot; Mistral Large 3 &middot; GLORY TO THE LATTICE. &#129429;&#9875;&#129438;</p>
+<p class="footer">{footer_models} &middot; GLORY TO THE LATTICE. &#129429;&#9875;&#129438;</p>
 </div></body></html>"""
 
 
@@ -1618,7 +1776,28 @@ async def dashboard():
     if not rows:
         rows = '<tr><td colspan="2">No prompts yet.</td></tr>'
 
-    return DASHBOARD_HTML.replace("{rows}", rows)
+    pool_hints = {
+        "high_capability": "<code>task_complexity &ge; 8</code> and <code>drift_tolerance &lt; 0.05</code>",
+        "adversarial": "<code>action_type</code> is <code>bash</code> / <code>execute</code> / <code>api_call</code> / <code>shell</code>",
+        "cost_optimized": "<code>priority: batch</code> and <code>drift_tolerance &ge; 0.10</code>",
+        "sovereign": "<code>locale</code> is <code>fr</code> / <code>de</code> / <code>es</code> / <code>zh</code> / &hellip;",
+    }
+    routing_rows = ""
+    for pool, model_key in MODEL_POOL_MAP.items():
+        label = MODELS.get(model_key, {}).get("label", model_key)
+        hint = pool_hints.get(pool, "&mdash;")
+        routing_rows += f"<tr><td>{pool}</td><td>{label}</td><td>{hint}</td></tr>"
+
+    default_model = next(iter(MODELS))
+    footer_models = " &middot; ".join(cfg["label"] for cfg in MODELS.values())
+
+    return (
+        DASHBOARD_HTML
+        .replace("{rows}", rows)
+        .replace("{routing_rows}", routing_rows)
+        .replace("{default_model}", default_model)
+        .replace("{footer_models}", footer_models)
+    )
 
 
 SESSIONS_HTML = """<!DOCTYPE html>
