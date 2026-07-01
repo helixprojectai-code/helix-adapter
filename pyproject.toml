@@ -34,9 +34,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://helixaiinnovations.ca"
+Homepage = "https://helixprojectai.com"
 Repository = "https://github.com/helixprojectai-code/helix-adapter"
-"Live Demo" = "https://helixaiinnovations.ca/chat/"
+"Live Demo" = "https://helixprojectai.com/chat/"
 "Bug Tracker" = "https://github.com/helixprojectai-code/helix-adapter/issues"
 
 [project.scripts]
