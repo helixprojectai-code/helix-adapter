@@ -7,6 +7,78 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.6.0] — 2026-06-30
+
+### Summary
+
+Dual tamper-evidence architecture: `chain_hash` (linear sequence integrity) plus an
+append-only Merkle tree (membership proofs). Every session receipt now carries a
+`merkle_root` sealing the tree state at that turn. Historical roots are immutable —
+old proofs remain valid after new receipts are added. Foundry gains full session
+management UI with inline Merkle proof viewer. CI enforced with ruff + black.
+141 tests passing.
+
+### Added
+
+- **`MerkleTree`** (`src/helix_adapter/merkle.py`) — append-only binary Merkle tree
+  over session receipt hashes. Duplicate-last padding (Bitcoin standard). Historical
+  roots stored per-turn so any prior state can be proved without rewriting the tree.
+  - `append(leaf_hash)` — add receipt hash, return new root
+  - `root_at(turn)` — root after exactly N receipts (immutable once written)
+  - `proof(turn)` — sibling path for inclusion proof against `root_at(turn)`
+  - `verify(leaf, proof, root)` — static; no tree instance required
+  - `from_leaves(hashes)` — reconstruct tree from stored receipt hashes (for resume)
+
+- **`merkle_root` on `JointReceipt`** — each receipt carries the Merkle root at
+  its turn. Chain hash catches sequence tampering; Merkle root catches structural
+  reordering. Receipts pre-dating 1.6.0 carry `merkle_root=None`.
+
+- **`HelixSession` Merkle methods** — `merkle_root` property, `merkle_proof(turn)`,
+  `merkle_all_roots()`. Tree initialized fresh and rebuilt from stored receipt hashes
+  on `resume()`.
+
+- **`HelixSession.merkle_consistency_check()`** — 3-layer integrity validation:
+  (1) chain hash recomputed from stored receipts, (2) Merkle tree rebuilt and root
+  compared, (3) each receipt's stored `merkle_root` cross-checked against the rebuilt
+  tree root at that turn. Returns `True` if all layers pass.
+
+- **Foundry session endpoints** — full session lifecycle over HTTP:
+  `POST /session/start`, `POST /session/{id}/send`, `GET /session/{id}`,
+  `GET /session/{id}/export`, `DELETE /session/{id}`, `GET /sessions`.
+  Cedar routes on start, model locked for session lifetime.
+
+- **Foundry `GET /session/{id}/merkle`** — current root, leaf count, all historical
+  roots indexed by turn.
+
+- **Foundry `GET /session/{id}/merkle/{turn}`** — inclusion proof for a specific
+  turn with inline `valid: bool` verification result.
+
+- **Foundry Sessions page** (`/sessions/`) — table of active receipt chains with
+  running drift per session, per-receipt detail view, Merkle root display, and
+  clickable proof viewer per receipt.
+
+- **Routed Chat session mode** — toggle in UI starts a Cedar-routed session on first
+  send, subsequent sends route to committed model. Badge shows session ID prefix,
+  model, turn number, and chain hash prefix. "End Session" deletes and resets.
+
+- **`/health` session stats** — `session_count` and `total_session_turns` added.
+
+- **`e2e_merkle_test.py`** — 22-check end-to-end test: session creation, chain hash,
+  merkle_root per receipt, proof verification across all turns, historical roots,
+  consistency check, resume with continued sends, tamper detection on leaf and proof.
+  No API keys required (mock model_fn).
+
+- **CI: `.github/workflows/lint.yml`** — ruff + black enforced on push to
+  `main`/`spider-dev`/`helix-dev` and on all PRs to `main`.
+
+### Fixed
+
+- **Foundry Mistral `max_tokens`** — `build_adapter()` and `build_session()` were
+  sending `max_completion_tokens` to Mistral-Large-3, which returns 422. Branch now
+  excludes Mistral deployments from the Azure `max_completion_tokens` path.
+
+---
+
 ## [1.5.0] — 2026-06-29
 
 ### Summary
