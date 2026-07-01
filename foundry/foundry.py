@@ -189,9 +189,9 @@ def build_adapter(model_name: str):
             "temperature": cfg["temperature"],
         }
         if cfg.get("azure") and "Mistral" not in depl:
-            kwargs["max_completion_tokens"] = 4096
+            kwargs["max_completion_tokens"] = 8192
         else:
-            kwargs["max_tokens"] = 4096
+            kwargs["max_tokens"] = 8192
         resp = client.chat.completions.create(**kwargs)
         if resp.usage:
             usage_capture.update({
@@ -228,9 +228,9 @@ def build_session(model_name: str, session_id: str | None = None) -> tuple["Heli
             "temperature": cfg["temperature"],
         }
         if cfg.get("azure") and "Mistral" not in depl:
-            kwargs["max_completion_tokens"] = 4096
+            kwargs["max_completion_tokens"] = 8192
         else:
-            kwargs["max_tokens"] = 4096
+            kwargs["max_tokens"] = 8192
         resp = client.chat.completions.create(**kwargs)
         if resp.usage:
             usage_capture.update({
