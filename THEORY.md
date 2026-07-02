@@ -1,5 +1,7 @@
 # THEORY.md
 
+![The Four Pillars of Helix](assets/pillars.jpg)
+
 # The Helix Manifesto: Foundations of the Verification Economy
 
 ## I. The Problem: The Liability Gap
