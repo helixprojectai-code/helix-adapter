@@ -35,12 +35,12 @@ We define the utility of an agentic system through the relationship between its 
 
 The **Helix Stability Function (S)** is expressed as:
 
-S = mathcalA ⋅ left( (ω)/(δ) right)
+$$S = \mathcal{A} \cdot \left(\frac{\omega}{\delta}\right)$$
 
 Where:
-* **mathcalA (Agency):** The capacity for complex, multi-step reasoning and tool execution.
-* **ω (Wobble):** The necessary stochastic variance required for intelligence.
-* **δ (Drift):** The instantaneous distance from the epistemic ground-truth baseline.
+* **$\mathcal{A}$ (Agency):** The capacity for complex, multi-step reasoning and tool execution.
+* **$\omega$ (Wobble):** The necessary stochastic variance required for intelligence.
+* **$\delta$ (Drift):** The instantaneous distance from the epistemic ground-truth baseline.
 
 ---
 
@@ -50,17 +50,17 @@ To prevent the collapse of the system into either "dead" staticity or "chaotic" 
 
 We define the acceptable state of an agentic system as:
 
-ε₀ ≤ δ < ε
+$$\varepsilon_0 \leq \delta < \varepsilon$$
 
 ### The Three States of the System:
 
-1. **The Dead Zone (δ < ε₀):**
+1. **The Dead Zone ($\delta < \varepsilon_0$):**
 The drift is too low. The system has lost its "wobble" and has become a deterministic, non-intelligent lookup table. It lacks the capacity for reasoning.
 
-2. **The Helix Zone (ε₀ ≤ δ < ε):**
+2. **The Helix Zone ($\varepsilon_0 \leq \delta < \varepsilon$):**
 The "Goldilocks Zone." The system maintains sufficient stochasticity for intelligent reasoning while remaining within the bounds of verifiable truth and authorized action. **This is the only state in which Helix operates.**
 
-3. **The Chaos Zone (δ ≥ ε):**
+3. **The Chaos Zone ($\delta \geq \varepsilon$):**
 The drift has exceeded the safety threshold. The model has entered a state of uncontrolled hallucination or has been bypassed via adversarial injection. In this state, the system is a liability and must be immediately terminated by the dual-gate architecture.
 
 ---
@@ -69,7 +69,7 @@ The drift has exceeded the safety threshold. The model has entered a state of un
 
 To enforce this window, Helix utilizes two distinct, out-of-band layers that sit outside the model's internal weights:
 
-* **The Duck Gate (Epistemic Governance):** Monitors δ in real-time. It extracts epistemic markers and calculates the γ-drift score to ensure the model remains within the [ ε₀, ε ) interval.
+* **The Duck Gate (Epistemic Governance):** Monitors $\delta$ in real-time. It extracts epistemic markers and calculates the $\gamma$-drift score to ensure the model remains within the $[\varepsilon_0, \varepsilon)$ interval.
 * **The Cedar Gate (Operational Governance):** Enforces the hard boundaries of ε by using **CNCF Cedar** to deterministically authorize or block agentic actions (API calls, shell commands, etc.) before they reach the execution layer.
 
 **The model suggests. The adapter governs. The receipt proves it.**
