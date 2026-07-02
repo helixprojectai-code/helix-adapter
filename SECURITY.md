@@ -35,10 +35,10 @@ This policy covers:
 
 | Version | Supported              |
 |---------|------------------------|
+| 1.7.x   | ✅ Full support        |
 | 1.6.x   | ✅ Full support        |
 | 1.5.x   | ⚠️ Security fixes only |
-| 1.4.x   | ❌ End of life         |
-| < 1.4   | ❌ End of life         |
+| < 1.5   | ❌ End of life         |
 
 ## Disclosure
 
@@ -49,4 +49,4 @@ We support coordinated disclosure. Give us reasonable time to patch before going
 Past contributors to adapter security:
 - **anitgravity** — adversarial audit (v1.2), codebase architecture review
 - **Pliny the Prompter** — jailbreak toolkit used in red-team testing (GODMODE, Parseltongue)
-- **Fable 5** — API security audit (v1.6.1): key hashing at rest, tenant isolation / IDOR, rate limiter trust-proxy fix, widget CORS and auth gate
+- **Fable 5** — API security audit (v1.7.0): key hashing at rest, tenant isolation / IDOR, rate limiter trust-proxy fix, widget CORS and auth gate

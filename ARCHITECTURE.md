@@ -350,9 +350,9 @@ These protections operate at multiple independent layers: the **prompt layer** e
 
 Validated in `test_v12_pipeline.py` under deterministic (`temperature=0.0`) conditions.
 
-### API Security Layer (v1.6.1)
+### API Security Layer (v1.7.0)
 
-The v1.6.1 release (Fable 5 audit) hardened the Foundry and Widget API surface:
+The v1.7.0 release (Fable 5 audit) hardened the Foundry and Widget API surface:
 
 - **Keys hashed at rest**: `foundry_db.hash_key()` (SHA-256). Keygen stores only the
   hash; plaintext is shown once and not recoverable. `require_key` hashes the presented
