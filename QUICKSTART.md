@@ -169,13 +169,13 @@ def session_drift(session_id: str):
 
 ## API Key Auth
 
-Protect your endpoints with the Foundry key system:
+For a simple standalone API, protect endpoints with a header check:
 
 ```python
 from fastapi import Depends, HTTPException
 from fastapi.security import APIKeyHeader
 
-API_KEYS = {"hx-your-key-here"}   # or load from foundry_db
+API_KEYS = {"hx-your-key-here"}
 
 key_header = APIKeyHeader(name="X-API-Key")
 
@@ -189,14 +189,23 @@ def chat(req: ChatRequest, _: str = Depends(require_key)):
     ...
 ```
 
-Or use the Foundry key store directly (requires the full Foundry install):
+For the Foundry key store (keys hashed at rest via SHA-256, node-scoped):
+
+```bash
+# Generate a node key — shown once, not recoverable
+python3 foundry/foundry_keygen.py --node my-node
+```
 
 ```python
 # foundry/ ships with helix-adapter — add it to path first
 import sys
 sys.path.insert(0, "foundry")
-from foundry_auth import require_key
+from foundry_auth import require_key  # FastAPI Depends-compatible
 ```
+
+Keys are stored as SHA-256 hashes. The plaintext presented via `X-API-Key` is
+hashed on each request and compared against the stored hash — no key material
+is retained after generation.
 
 ---
 
@@ -353,4 +362,4 @@ session = HelixSession(model_fn=call_model, drift_threshold=strict)
 
 - **Cedar policy gating** — see the Cedar section in [README.md](README.md)
 - **Helix Foundry** — Cedar-routed multi-model inference pool, ships in `foundry/`
-- **Live demo** — [helixaiinnovations.ca/chat/](https://helixaiinnovations.ca/chat/)
+- **Live demo** — [helixprojectai.com/chat/](https://helixprojectai.com/chat/)

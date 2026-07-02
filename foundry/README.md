@@ -29,18 +29,43 @@ Pool assignments (pool → model) are deployment-defined. Typical layout:
 | `cost_optimized` | write_file / summarize / batch |
 | `sovereign` | locale / long-doc / regulatory |
 
+## Auth
+
+Foundry uses node-scoped API keys. Generate a key for each node:
+
+    python3 foundry_keygen.py --node <node-name>
+
+The key is shown once at generation time. Keys are stored as SHA-256 hashes — they
+cannot be recovered after generation. Pass the plaintext key in requests:
+
+    X-API-Key: hx-<your-key>
+
+All inference and session endpoints require a valid key. The key determines the node
+identity used for tenant isolation — sessions and ledger entries created by one node
+are not accessible to another.
+
+**After upgrading to 1.6.1+:** Re-run `foundry_keygen.py` for each node. Old databases
+used plaintext storage; the new hash lookup will reject them.
+
 ## Endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/` | Dashboard — model counts |
-| GET | `/health` | Health check — per-model key status, total prompts |
-| GET | `/ledger` | Recent inference entries (JSON, ?limit=N) |
-| POST | `/chat` | Direct model call — `{"model": "...", "message": "..."}` |
-| POST | `/routed-chat` | Action-context routing — `{"action": "...", "message": "..."}` |
-| GET | `/routed-chat` | Interactive web UI — action selector, drift display, export |
-| POST | `/audit` | Constitutional scoring — `{"text": "..."}` |
-| GET | `/audit` | Web UI — paste any LLM response, get drift + compliance score |
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/` | — | Dashboard — model counts |
+| GET | `/health` | — | Health check — per-model key status, total prompts |
+| POST | `/keygen` | — | Generate a new node API key |
+| GET | `/ledger` | Required | Recent inference entries for calling node (?limit=N) |
+| POST | `/chat` | Required | Direct model call — `{"model": "...", "message": "..."}` |
+| POST | `/routed-chat` | Required | Action-context routing — `{"action": "...", "message": "..."}` |
+| GET | `/routed-chat` | Key gate | Interactive web UI — action selector, drift display, export |
+| POST | `/audit` | — | Constitutional scoring — `{"text": "..."}` |
+| GET | `/audit` | — | Web UI — paste any LLM response, get drift + compliance score |
+| GET | `/sessions` | Required | List sessions for calling node |
+| POST | `/session/start` | Required | Start a Cedar-routed session |
+| POST | `/session/{id}/send` | Required | Send a turn in a session |
+| GET | `/session/{id}` | Required | Session detail + receipt chain |
+| GET | `/session/{id}/export` | Required | Export receipt chain (JSONL) |
+| DELETE | `/session/{id}` | Required | Delete session |
 
 ## Routing
 
@@ -64,6 +89,17 @@ Set deployment and API key:
     # Qwen (Alibaba Cloud Model Studio)
     HELIX_DEPLOYMENT=qwen-intl
     QWEN_API_KEY=...
+
+Security and networking options:
+
+    # Trust X-Forwarded-For for rate limiting (set only behind a trusted reverse proxy)
+    HELIX_TRUST_PROXY=1
+
+    # Widget API: require key on /api/chat, /api/compare, /v1/chat/completions
+    HELIX_WIDGET_API_KEY=<key>
+
+    # Widget API: allow cross-origin requests from these origins (comma-separated)
+    HELIX_CORS_ORIGINS=https://your-frontend.example.com
 
 See `foundry/deployments/<name>/.env.example` for full variable reference.
 

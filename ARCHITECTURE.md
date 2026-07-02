@@ -335,9 +335,11 @@ A reference implementation that provides:
 - `setup.py`: Creates a secure local configuration (`~/.helix/`).
 - `chat.py`: Terminal interface for interacting with the adapter.
 
-## 5. Security & Hardening Posture (v1.2)
+## 5. Security & Hardening Posture
 
-The v1.2 release introduced several defensive measures against common bypass techniques:
+### Constitutional Layer (v1.2)
+
+The v1.2 release introduced defensive measures against common bypass techniques:
 
 - **Blind-spot protection**: Long unlabeled responses are forced to maximum drift.
 - **Tampering interception**: Attempts to fake drift scores or compliance metadata inside the model output are detected and overridden.
@@ -348,10 +350,31 @@ These protections operate at multiple independent layers: the **prompt layer** e
 
 Validated in `test_v12_pipeline.py` under deterministic (`temperature=0.0`) conditions.
 
+### API Security Layer (v1.6.1)
+
+The v1.6.1 release (Fable 5 audit) hardened the Foundry and Widget API surface:
+
+- **Keys hashed at rest**: `foundry_db.hash_key()` (SHA-256). Keygen stores only the
+  hash; plaintext is shown once and not recoverable. `require_key` hashes the presented
+  `X-API-Key` and compares against the stored hash — no key material retained.
+
+- **Tenant isolation**: All `/session/*` endpoints enforce per-node ownership. Cross-node
+  access returns 404 (non-enumerable — IDs cannot be probed). `/sessions` and both
+  `/ledger` endpoints are scoped to the calling node. Sessions and ledger entries stamp
+  `node_id` at creation.
+
+- **Rate limiter trust-proxy fix**: `X-Forwarded-For` only accepted when
+  `HELIX_TRUST_PROXY=1`. Defaults to socket IP. Stale buckets are evicted per-request
+  to prevent unbounded map growth.
+
+- **Widget CORS and auth gate**: Wildcard CORS origin removed; opt-in allowlist via
+  `HELIX_CORS_ORIGINS`. Optional key gate on model-backed endpoints via
+  `HELIX_WIDGET_API_KEY`. Bypass key uses `hmac.compare_digest` (constant-time);
+  header-only (query-param path that leaked into logs removed).
+
 ### Cedar Dual-Gate (v1.4)
 
-The feature/cedar-policy-gating branch adds **CNCF Cedar** integration for dual-gate
-containment per RFC 0003:
+v1.4 added **CNCF Cedar** integration for dual-gate containment per RFC 0003:
 
 - **Duck Gate** (response): Epistemic markers, drift scoring, receipts — unchanged from v1.2
 - **Cedar Gate** (action): Declarative policy evaluation on tool use, shell, API calls before execution

@@ -7,6 +7,48 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.6.1] — 2026-07-02
+
+### Summary
+
+Security hardening pass (Fable 5 audit). Keys are now hashed at rest in the Foundry
+key store — existing key databases must be re-issued after upgrading. Tenant isolation
+closes cross-node IDOR on sessions and ledger. Rate limiter no longer trusts
+`X-Forwarded-For` unless `HELIX_TRUST_PROXY` is set. Widget API gains optional auth
+gate and CORS allowlist; open-proxy path over paid model credits closed.
+
+**Upgrade note:** Run `foundry_keygen.py --node <name>` for each node after upgrading.
+Old plaintext key hashes will not match the new SHA-256 lookup — no migration path
+(keys are unrecoverable by design).
+
+### Changed
+
+- **Foundry: API keys hashed at rest** — `foundry_db.hash_key()` (SHA-256); `foundry_keygen`
+  stores the hash and shows plaintext once on generation. `foundry_auth.require_key` hashes
+  the presented key to look it up and never returns key material.
+
+- **Foundry: Session and ledger tenant isolation** — all `/session/*` endpoints enforce
+  per-node ownership via `_assert_session_access` (mismatch → 404, non-enumerable).
+  `/sessions` and both `/ledger` endpoints are scoped to the calling node.
+  Sessions and ledger entries now record `node_id` at creation.
+
+- **Foundry: Rate limiter trust-proxy fix** — `X-Forwarded-For` only trusted when
+  `HELIX_TRUST_PROXY=1` is set; defaults to socket IP. Stale rate-limit buckets are
+  evicted on each request, preventing unbounded memory growth.
+
+- **Widget: CORS allowlist** — wildcard `*` removed. Opt-in via `HELIX_CORS_ORIGINS`
+  (comma-separated). Defaults to no CORS headers (same-origin page).
+
+- **Widget: Optional auth gate** — `HELIX_WIDGET_API_KEY` enables key gating on
+  `/api/chat`, `/api/compare`, and `/v1/chat/completions`. Left unset, local demo
+  behavior is unchanged.
+
+- **Widget: Constant-time bypass key** — `hmac.compare_digest` replaces `==`; header-only
+  (query-param path that leaked into logs removed). Dead `{{COMPARE_BYPASS_KEY}}`
+  template substitution removed. `chr()`-obfuscated env-var name removed.
+
+---
+
 ## [1.6.0] — 2026-06-30
 
 ### Summary

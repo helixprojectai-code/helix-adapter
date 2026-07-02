@@ -326,7 +326,7 @@ auth, resume, systemd service, and backend swap examples:
 ## Live Demo
 
 A live constitutional chat instance is running at
-**[helixaiinnovations.com](https://helixaiinnovations.com)** — DM
+**[helixprojectai.com](https://helixprojectai.com)** — DM
 [Stephen Hope on LinkedIn](https://www.linkedin.com/in/stephen-hope-75497937a) for access.
 Includes A/B model comparison, drift gauge, receipt export, and the full constitutional prompt.
 
