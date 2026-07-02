@@ -44,7 +44,7 @@ All inference and session endpoints require a valid key. The key determines the 
 identity used for tenant isolation — sessions and ledger entries created by one node
 are not accessible to another.
 
-**After upgrading to 1.6.1+:** Re-run `foundry_keygen.py` for each node. Old databases
+**After upgrading to 1.7.0+:** Re-run `foundry_keygen.py` for each node. Old databases
 used plaintext storage; the new hash lookup will reject them.
 
 ## Endpoints

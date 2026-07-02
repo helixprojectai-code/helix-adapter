@@ -70,12 +70,15 @@ if not foundry_key and env_path.exists():
             break
 
 if foundry_key:
-    foundry_client = OpenAI(api_key=foundry_key, base_url="https://helix-nodes-resource.openai.azure.com/openai/v1")
+    foundry_client = OpenAI(
+        api_key=foundry_key, base_url="https://helix-nodes-resource.openai.azure.com/openai/v1"
+    )
 
 adapter = HelixAdapter(
     model_fn=lambda msgs: (
         foundry_client or OpenAI(api_key=_load_key(), base_url="https://api.deepseek.com/v1")
-    ).chat.completions.create(
+    )
+    .chat.completions.create(
         model="DeepSeek-V4-Pro" if foundry_client else "deepseek-chat",
         messages=msgs,
         temperature=0.7,
@@ -382,9 +385,7 @@ class CompareRequest(BaseModel):
 
 
 @app.post("/api/compare")
-async def compare(
-    req: CompareRequest, request: Request, _auth: None = Depends(require_widget_key)
-):
+async def compare(req: CompareRequest, request: Request, _auth: None = Depends(require_widget_key)):
     _check_rate_limit(request)
     if not req.message.strip():
         raise HTTPException(400, "message empty")
@@ -566,6 +567,7 @@ async def health():
     cedar_info = {}
     try:
         from helix_adapter.cedar import CedarGate
+
         gate = CedarGate()
         cedar_info = {
             "cedar_policy_hash": gate.policy_hash,

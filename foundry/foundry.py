@@ -64,6 +64,7 @@ SESSION_META: dict = _load_session_meta()
 # Loaded from deployments/<HELIX_DEPLOYMENT>/models.json at startup.
 # Swap providers by setting HELIX_DEPLOYMENT env var — no code changes.
 
+
 def _load_deployment() -> dict:
     name = os.environ.get("HELIX_DEPLOYMENT", "azure")
     cfg_path = HERE / "deployments" / name / "models.json"
@@ -194,11 +195,13 @@ def build_adapter(model_name: str):
             kwargs["max_tokens"] = 8192
         resp = client.chat.completions.create(**kwargs)
         if resp.usage:
-            usage_capture.update({
-                "prompt_tokens": resp.usage.prompt_tokens,
-                "completion_tokens": resp.usage.completion_tokens,
-                "total_tokens": resp.usage.total_tokens,
-            })
+            usage_capture.update(
+                {
+                    "prompt_tokens": resp.usage.prompt_tokens,
+                    "completion_tokens": resp.usage.completion_tokens,
+                    "total_tokens": resp.usage.total_tokens,
+                }
+            )
         return resp.choices[0].message.content
 
     adapter = HelixAdapter(model_fn=fn, model_name=cfg["label"])
@@ -233,11 +236,13 @@ def build_session(model_name: str, session_id: str | None = None) -> tuple["Heli
             kwargs["max_tokens"] = 8192
         resp = client.chat.completions.create(**kwargs)
         if resp.usage:
-            usage_capture.update({
-                "prompt_tokens": resp.usage.prompt_tokens,
-                "completion_tokens": resp.usage.completion_tokens,
-                "total_tokens": resp.usage.total_tokens,
-            })
+            usage_capture.update(
+                {
+                    "prompt_tokens": resp.usage.prompt_tokens,
+                    "completion_tokens": resp.usage.completion_tokens,
+                    "total_tokens": resp.usage.total_tokens,
+                }
+            )
         return resp.choices[0].message.content
 
     label = cfg["label"]
@@ -894,7 +899,7 @@ def _node_badge_html() -> str:
         f'<span class="node-badge">'
         f'<span class="node-dot"></span>'
         f'{flag} <strong>{label}</strong>&nbsp;<span style="opacity:.6">{sub}</span>'
-        f'</span>'
+        f"</span>"
     )
 
 
@@ -2136,8 +2141,7 @@ async def dashboard():
     footer_models = " &middot; ".join(cfg["label"] for cfg in MODELS.values())
 
     return (
-        DASHBOARD_HTML
-        .replace("{rows}", rows)
+        DASHBOARD_HTML.replace("{rows}", rows)
         .replace("{routing_rows}", routing_rows)
         .replace("{default_model}", default_model)
         .replace("{footer_models}", footer_models)
