@@ -824,16 +824,33 @@ app = FastAPI(title="Helix Foundry", version="1.0.0")
 _RATE_LIMIT = 20
 _RATE_WINDOW = 60
 _rate_buckets: dict = collections.defaultdict(list)
+# Only honour X-Forwarded-For when explicitly told we sit behind a trusted
+# proxy; otherwise the header is attacker-controlled and would let any client
+# forge a fresh bucket per request, defeating the limiter.
+_TRUST_PROXY = os.environ.get("HELIX_TRUST_PROXY", "").lower() in ("1", "true", "yes")
+
+
+def _client_ip(request: Request) -> str:
+    if _TRUST_PROXY:
+        fwd = request.headers.get("x-forwarded-for", "")
+        if fwd:
+            return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
 def _check_rate_limit(request: Request) -> None:
-    ip = request.client.host if request.client else "unknown"
+    ip = _client_ip(request)
     now = time.time()
-    hits = _rate_buckets[ip]
-    _rate_buckets[ip] = [t for t in hits if now - t < _RATE_WINDOW]
-    if len(_rate_buckets[ip]) >= _RATE_LIMIT:
+    hits = [t for t in _rate_buckets[ip] if now - t < _RATE_WINDOW]
+    if len(hits) >= _RATE_LIMIT:
+        _rate_buckets[ip] = hits
         raise HTTPException(429, f"Rate limit: {_RATE_LIMIT} requests per {_RATE_WINDOW}s")
-    _rate_buckets[ip].append(now)
+    hits.append(now)
+    _rate_buckets[ip] = hits
+    # Evict stale buckets so the map can't grow without bound under IP churn.
+    if len(_rate_buckets) > 4096:
+        for k in [k for k, v in _rate_buckets.items() if not v or now - v[-1] >= _RATE_WINDOW]:
+            del _rate_buckets[k]
 
 
 class ChatRequest(BaseModel):
@@ -901,7 +918,7 @@ def _save_entry(entry: dict):
         f.write(json.dumps(entry, default=str) + "\n")
 
 
-def _load_entries(limit: int = 100) -> list:
+def _load_entries(limit: int = 100, node_id: str | None = None) -> list:
     if not LEDGER_FILE.exists():
         return []
     entries = []
@@ -910,9 +927,14 @@ def _load_entries(limit: int = 100) -> list:
             line = line.strip()
             if line:
                 try:
-                    entries.append(json.loads(line))
+                    entry = json.loads(line)
                 except json.JSONDecodeError:
-                    pass
+                    continue
+                # Scope to the requesting node. Legacy entries with no
+                # recorded owner are withheld rather than leaked cross-node.
+                if node_id is not None and entry.get("node_id") != node_id:
+                    continue
+                entries.append(entry)
     return entries[-limit:]
 
 
@@ -940,6 +962,7 @@ async def chat(req: ChatRequest, request: Request, _key: dict = Depends(require_
 
     entry = {
         "timestamp": time.time(),
+        "node_id": _key["node_id"],
         "model": req.model,
         "label": label,
         "message": req.message[:200],
@@ -999,6 +1022,7 @@ async def routed_chat(req: RoutedChatRequest, request: Request, _key: dict = Dep
 
     entry = {
         "timestamp": time.time(),
+        "node_id": _key["node_id"],
         "model": route["model"],
         "label": label,
         "pool": route["pool"],
@@ -1028,8 +1052,8 @@ async def routed_chat(req: RoutedChatRequest, request: Request, _key: dict = Dep
     }
 
 
-def _ledger_response(limit: int) -> dict:
-    entries = _load_entries(limit)
+def _ledger_response(limit: int, node_id: str) -> dict:
+    entries = _load_entries(limit, node_id=node_id)
     return {"count": len(entries), "entries": list(reversed(entries))}
 
 
@@ -1040,15 +1064,30 @@ async def ping(_key: dict = Depends(require_key)):
 
 @app.get("/ledger")
 async def ledger(limit: int = 20, _key: dict = Depends(require_key)):
-    return _ledger_response(limit)
+    return _ledger_response(limit, _key["node_id"])
 
 
 @app.get("/routed-chat/ledger")
 async def routed_chat_ledger(limit: int = 20, _key: dict = Depends(require_key)):
-    return _ledger_response(limit)
+    return _ledger_response(limit, _key["node_id"])
 
 
 # ── Session Endpoints ──
+
+
+def _assert_session_access(session_id: str, node_id: str) -> dict:
+    """Enforce that node_id may touch this session; return its meta.
+
+    Sessions carry the node_id of their creator. A mismatched owner is
+    reported as 404 (not 403) so callers can't probe which session ids
+    exist for other nodes. Legacy sessions with no recorded owner remain
+    reachable for backward compatibility.
+    """
+    meta = SESSION_META.get(session_id, {})
+    owner = meta.get("owner")
+    if owner is not None and owner != node_id:
+        raise HTTPException(404, f"Session not found: {session_id}")
+    return meta
 
 
 def _session_stats(session_id: str) -> dict:
@@ -1083,6 +1122,7 @@ async def session_start(
         raise HTTPException(400, str(e))
 
     meta = {
+        "owner": _key["node_id"],
         "model_name": route["model"],
         "label": label,
         "pool": route["pool"],
@@ -1110,6 +1150,11 @@ async def session_send(
     if not req.message.strip():
         raise HTTPException(400, "message empty")
     meta = SESSION_META.get(session_id)
+    if meta is not None:
+        # Enforce ownership when we have metadata to check against.
+        owner = meta.get("owner")
+        if owner is not None and owner != _key["node_id"]:
+            raise HTTPException(404, f"Session not found: {session_id}")
     if not meta:
         # Try to recover model from stored receipts if meta was lost
         receipts = FOUNDRY_STORE.get_session(session_id)
@@ -1159,7 +1204,7 @@ async def session_send(
 @app.get("/session/{session_id}")
 async def session_get(session_id: str, _key: dict = Depends(require_key)):
     """Session metadata and full receipt chain."""
-    meta = SESSION_META.get(session_id, {})
+    meta = _assert_session_access(session_id, _key["node_id"])
     receipts = FOUNDRY_STORE.get_session(session_id)
     if not receipts and not meta:
         raise HTTPException(404, f"Session not found: {session_id}")
@@ -1179,6 +1224,7 @@ async def session_get(session_id: str, _key: dict = Depends(require_key)):
 @app.get("/session/{session_id}/export")
 async def session_export(session_id: str, fmt: str = "json", _key: dict = Depends(require_key)):
     """Export full session receipt chain as JSON or JSONL."""
+    _assert_session_access(session_id, _key["node_id"])
     receipts = FOUNDRY_STORE.get_session(session_id)
     if not receipts:
         raise HTTPException(404, f"Session not found: {session_id}")
@@ -1190,6 +1236,7 @@ async def session_export(session_id: str, fmt: str = "json", _key: dict = Depend
 @app.delete("/session/{session_id}")
 async def session_delete(session_id: str, _key: dict = Depends(require_key)):
     """Delete a session and its receipt chain."""
+    _assert_session_access(session_id, _key["node_id"])
     FOUNDRY_STORE.delete_session(session_id)
     SESSION_META.pop(session_id, None)
     _save_session_meta(SESSION_META)
@@ -1199,6 +1246,7 @@ async def session_delete(session_id: str, _key: dict = Depends(require_key)):
 @app.get("/session/{session_id}/merkle")
 async def session_merkle(session_id: str, _key: dict = Depends(require_key)):
     """Current Merkle root and all historical roots for the session."""
+    _assert_session_access(session_id, _key["node_id"])
     receipts = FOUNDRY_STORE.get_session(session_id)
     if not receipts:
         raise HTTPException(404, f"Session not found: {session_id}")
@@ -1216,6 +1264,7 @@ async def session_merkle(session_id: str, _key: dict = Depends(require_key)):
 @app.get("/session/{session_id}/merkle/{turn}")
 async def session_merkle_proof(session_id: str, turn: int, _key: dict = Depends(require_key)):
     """Merkle inclusion proof for a specific turn."""
+    _assert_session_access(session_id, _key["node_id"])
     receipts = FOUNDRY_STORE.get_session(session_id)
     if not receipts:
         raise HTTPException(404, f"Session not found: {session_id}")
@@ -1232,11 +1281,16 @@ async def session_merkle_proof(session_id: str, turn: int, _key: dict = Depends(
 
 @app.get("/sessions")
 async def sessions_list(_key: dict = Depends(require_key)):
-    """List all sessions with stats."""
+    """List sessions owned by the calling node, with stats."""
+    node_id = _key["node_id"]
     session_ids = FOUNDRY_STORE.list_sessions()
     result = []
     for sid in session_ids:
         meta = SESSION_META.get(sid, {})
+        owner = meta.get("owner")
+        # Show the caller's own sessions plus legacy owner-less ones.
+        if owner is not None and owner != node_id:
+            continue
         stats = _session_stats(sid)
         result.append({"session_id": sid, **meta, **stats})
     return {"count": len(result), "sessions": result}

@@ -13,7 +13,7 @@ import argparse
 import secrets
 from datetime import datetime, timezone
 
-from foundry_db import get_conn
+from foundry_db import get_conn, hash_key
 
 
 def generate_key() -> str:
@@ -26,18 +26,18 @@ def cmd_create(node_id: str, note: str) -> None:
     conn = get_conn()
     conn.execute(
         "INSERT INTO api_keys (key, node_id, created, last_used, revoked, note) VALUES (?, ?, ?, NULL, 0, ?)",
-        (key, node_id, now, note or ""),
+        (hash_key(key), node_id, now, note or ""),
     )
     conn.commit()
     conn.close()
     print(f"Key created for node '{node_id}':")
     print(f"  {key}")
-    print("  Store this — it cannot be retrieved after this point.")
+    print("  Store this — only its hash is kept; it cannot be retrieved after this point.")
 
 
 def cmd_revoke(key: str) -> None:
     conn = get_conn()
-    cur = conn.execute("UPDATE api_keys SET revoked = 1 WHERE key = ?", (key,))
+    cur = conn.execute("UPDATE api_keys SET revoked = 1 WHERE key = ?", (hash_key(key),))
     conn.commit()
     conn.close()
     if cur.rowcount == 0:
@@ -57,12 +57,14 @@ def cmd_list() -> None:
         print("No keys.")
         return
 
-    print(f"{'KEY':<40}  {'NODE':<16}  {'STATUS':<8}  {'LAST USED':<26}  NOTE")
-    print("-" * 110)
+    print(f"{'KEY HASH':<20}  {'NODE':<16}  {'STATUS':<8}  {'LAST USED':<26}  NOTE")
+    print("-" * 90)
     for r in rows:
         status = "revoked" if r["revoked"] else "active"
         last = r["last_used"] or "never"
-        print(f"{r['key']:<40}  {r['node_id']:<16}  {status:<8}  {last:<26}  {r['note'] or ''}")
+        # Only the hash is stored; show a short prefix for identification.
+        key_disp = (r["key"][:16] + "…") if len(r["key"]) > 16 else r["key"]
+        print(f"{key_disp:<20}  {r['node_id']:<16}  {status:<8}  {last:<26}  {r['note'] or ''}")
 
 
 def main():

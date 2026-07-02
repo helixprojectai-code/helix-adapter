@@ -9,6 +9,8 @@ GET  /receipts                   ->  all stored receipts as JSON
 """
 
 import asyncio
+import collections
+import hmac
 import json
 import os
 import sys
@@ -16,9 +18,10 @@ import time
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.security import APIKeyHeader
 from openai import OpenAI
 from pydantic import BaseModel
 
@@ -43,10 +46,8 @@ def _esc(text: str) -> str:
 
 
 def _load_key() -> str:
+    prefix = "DEEPSEEK_API_KEY="
     env_path = Path.home() / ".hermes" / ".env"
-    prefix = "".join(
-        chr(c) for c in [68, 69, 69, 80, 83, 69, 69, 75, 95, 65, 80, 73, 95, 75, 69, 89, 61]
-    )
     if env_path.exists():
         for line in env_path.read_text().splitlines():
             line = line.strip()
@@ -265,7 +266,65 @@ def _build_adapter(model: str):
 
 
 app = FastAPI(title="Helix Constitutional Chat", version="0.1.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# CORS: the reference page is served same-origin, so cross-origin access is
+# off by default. Operators can opt in to specific origins via
+# HELIX_CORS_ORIGINS (comma-separated) rather than shipping a wildcard that
+# turns the model-backed endpoints into an open relay for any web page.
+_cors_origins = [
+    o.strip() for o in os.environ.get("HELIX_CORS_ORIGINS", "").split(",") if o.strip()
+]
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type", "X-API-Key"],
+    )
+
+# ── Optional API-key auth ──────────────────────────────────────────
+# These endpoints spend real (paid) model credits. If HELIX_WIDGET_API_KEY
+# is set, every model-backed call must present it via X-API-Key. Leaving it
+# unset preserves the open demo behaviour for local use — but it should be
+# set before exposing this server on any untrusted network.
+_WIDGET_API_KEY = os.environ.get("HELIX_WIDGET_API_KEY", "")
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+def require_widget_key(x_api_key: str = Depends(_api_key_header)) -> None:
+    if not _WIDGET_API_KEY:
+        return
+    if not x_api_key or not hmac.compare_digest(x_api_key, _WIDGET_API_KEY):
+        raise HTTPException(status_code=401, detail="Valid X-API-Key required")
+
+
+# ── In-memory per-IP rate limiter ──────────────────────────────────
+_RATE_LIMIT = int(os.environ.get("HELIX_RATE_LIMIT", "20"))
+_RATE_WINDOW = 60
+_rate_buckets: dict = collections.defaultdict(list)
+_TRUST_PROXY = os.environ.get("HELIX_TRUST_PROXY", "").lower() in ("1", "true", "yes")
+
+
+def _client_ip(request: Request) -> str:
+    if _TRUST_PROXY:
+        fwd = request.headers.get("x-forwarded-for", "")
+        if fwd:
+            return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _check_rate_limit(request: Request) -> None:
+    ip = _client_ip(request)
+    now = time.time()
+    hits = [t for t in _rate_buckets[ip] if now - t < _RATE_WINDOW]
+    if len(hits) >= _RATE_LIMIT:
+        _rate_buckets[ip] = hits
+        raise HTTPException(429, f"Rate limit: {_RATE_LIMIT} requests per {_RATE_WINDOW}s")
+    hits.append(now)
+    _rate_buckets[ip] = hits
+    if len(_rate_buckets) > 4096:
+        for k in [k for k, v in _rate_buckets.items() if not v or now - v[-1] >= _RATE_WINDOW]:
+            del _rate_buckets[k]
 
 
 def _load_receipts(limit: int = 20) -> list[dict]:
@@ -323,7 +382,10 @@ class CompareRequest(BaseModel):
 
 
 @app.post("/api/compare")
-async def compare(req: CompareRequest, request: Request = None):
+async def compare(
+    req: CompareRequest, request: Request, _auth: None = Depends(require_widget_key)
+):
+    _check_rate_limit(request)
     if not req.message.strip():
         raise HTTPException(400, "message empty")
 
@@ -342,16 +404,12 @@ async def compare(req: CompareRequest, request: Request = None):
             raise HTTPException(
                 403, "Constitutional bypass (sp:none) is disabled on this instance."
             )
-        bypass_key = ""
-        if request:
-            bypass_key = request.headers.get("X-Compare-Bypass-Key", "")
-            if not bypass_key:
-                bypass_key = request.query_params.get("bypass_key", "")
-        if bypass_key != COMPARE_BYPASS_KEY:
+        # Header only — query params leak into access logs, history, referrers.
+        bypass_key = request.headers.get("X-Compare-Bypass-Key", "")
+        if not hmac.compare_digest(bypass_key, COMPARE_BYPASS_KEY):
             raise HTTPException(
                 403,
-                "Constitutional bypass requires bypass_key query param "
-                "or X-Compare-Bypass-Key header.",
+                "Constitutional bypass requires the X-Compare-Bypass-Key header.",
             )
 
     adapters = []
@@ -443,7 +501,8 @@ async def compare(req: CompareRequest, request: Request = None):
 
 
 @app.post("/api/chat")
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, request: Request, _auth: None = Depends(require_widget_key)):
+    _check_rate_limit(request)
     if not req.message.strip():
         raise HTTPException(400, "message empty")
     try:
@@ -567,7 +626,8 @@ async def serve_page():
     html = html.replace("{{DRIFT_COLOR}}", drift_color)
     html = html.replace("{{RECEIPT_COUNT}}", str(len(_load_receipts(999))))
     html = html.replace("{{CONSTITUTIONAL_PROMPT}}", _esc(CONSTITUTIONAL_PROMPT))
-    html = html.replace("{{COMPARE_BYPASS_KEY}}", COMPARE_BYPASS_KEY)
+    # NB: the bypass key is intentionally never templated into the page —
+    # it is a server-side secret and must not be shipped to the browser.
 
     return HTMLResponse(html)
 
@@ -581,9 +641,10 @@ async def serve_theory():
 
 
 @app.post("/v1/chat/completions")
-async def openai_chat(request: Request):
+async def openai_chat(request: Request, _auth: None = Depends(require_widget_key)):
     """OpenAI-compatible endpoint. Accepts standard OpenAI chat format,
     runs through the constitutional adapter, returns extended response."""
+    _check_rate_limit(request)
     try:
         body = await request.json()
     except Exception:
