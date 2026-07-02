@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 
 from fastapi import Depends, HTTPException
 from fastapi.security import APIKeyHeader
-from foundry_db import get_conn
+from foundry_db import get_conn, hash_key
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -26,11 +26,12 @@ def require_key(x_api_key: str = Depends(_api_key_header)) -> dict:
     if not x_api_key:
         raise HTTPException(status_code=401, detail="X-API-Key header required")
 
+    key_hash = hash_key(x_api_key)
     conn = get_conn()
     try:
         row = conn.execute(
             "SELECT key, node_id, created, last_used, revoked, note FROM api_keys WHERE key = ?",
-            (x_api_key,),
+            (key_hash,),
         ).fetchone()
 
         if row is None:
@@ -41,12 +42,12 @@ def require_key(x_api_key: str = Depends(_api_key_header)) -> dict:
 
         conn.execute(
             "UPDATE api_keys SET last_used = ? WHERE key = ?",
-            (datetime.now(timezone.utc).isoformat(), x_api_key),
+            (datetime.now(timezone.utc).isoformat(), key_hash),
         )
         conn.commit()
 
+        # Never return the key material (the stored value is only a hash anyway).
         return {
-            "key": row["key"],
             "node_id": row["node_id"],
             "note": row["note"],
         }
