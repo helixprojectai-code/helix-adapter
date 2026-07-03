@@ -10,7 +10,7 @@ Usage:
     # → http://localhost:8800
 
 API:
-    GET  /health           → per-model status + drift
+    GET  /health           → per-model status + marker coverage
     POST /chat             → {"model": "...", "message": "..."}
     POST /v1/chat/completions → OpenAI-compatible
     GET  /                 → dashboard
@@ -372,7 +372,7 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
 
 <h1>&#9877; <span>Helix Foundry</span> &mdash; Cedar Routed Chat</h1>
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
-<p class="subtitle" style="margin-bottom:0;">Cedar routes each request to the right model pool. Every response is drift-scored, receipt-sealed, and Merkle-verified.</p>
+<p class="subtitle" style="margin-bottom:0;">Cedar routes each request to the right model pool. Every response is coverage-scored, receipt-sealed, and Merkle-verified.</p>
 <div style="flex:1;"></div>
 <select id="exportSelector" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;max-width:200px;">
   <option value="all">All entries</option>
@@ -397,7 +397,7 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
     <span>complexity</span>
     <input type="range" id="complexitySlider" min="1" max="10" value="5" oninput="document.getElementById('complexityVal').textContent=this.value">
     <span class="val" id="complexityVal">5</span>
-    <span style="margin-left:12px;">drift tol.</span>
+    <span style="margin-left:12px;">routing tolerance</span>
     <select id="driftSelect" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 6px;color:var(--text);font-size:11px;">
       <option value="0.03">strict 0.03</option>
       <option value="0.10" selected>normal 0.10</option>
@@ -1447,9 +1447,9 @@ async def audit(req: AuditRequest, request: Request, _key: dict = Depends(requir
             "submitted_compliant": validation["compliant"],
             "baseline_compliant": b_validation["compliant"],
             "summary": (
-                f"Baseline (Helix): γ={b_drift:.3f}, {b_validation['marker_count']} markers, {'compliant' if b_validation['compliant'] else 'non-compliant'}. "
-                f"Submitted: γ={drift:.3f}, {marker_count} markers, {'compliant' if validation['compliant'] else 'non-compliant'}. "
-                f"Delta: Δγ={drift - b_drift:+.4f}, Δmarkers={marker_count - b_validation['marker_count']:+d}."
+                f"Baseline (Helix): coverage={100*(1 - b_drift):.0f}%, {b_validation['marker_count']} markers, {'compliant' if b_validation['compliant'] else 'non-compliant'}. "
+                f"Submitted: coverage={100*(1 - drift):.0f}%, {marker_count} markers, {'compliant' if validation['compliant'] else 'non-compliant'}. "
+                f"Delta: Δcoverage={100*(b_drift - drift):+.1f}pp, Δmarkers={marker_count - b_validation['marker_count']:+d}."
             ),
         }
 
@@ -1790,7 +1790,7 @@ AUDIT_HTML = """<!DOCTYPE html>
 
 <h1>&#9877; <span>Helix Foundry</span> &mdash; Constitutional Audit</h1>
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-<p class="subtitle" style="margin-bottom:0;">Paste any LLM response. Get drift score, marker compliance, claim extraction. No model call — pure constitutional evaluation.</p>
+<p class="subtitle" style="margin-bottom:0;">Paste any LLM response. Get marker coverage, marker compliance, claim extraction. No model call — pure constitutional evaluation.</p>
 <div style="flex:1;"></div>
 <select id="exportSelector" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;max-width:200px;display:none;">
   <option value="all">All audits</option>
@@ -1910,7 +1910,7 @@ function updateExportOptions() {
     const preview = (a.text || '').slice(0, 40);
     const opt = document.createElement('option');
     opt.value = String(i);
-    opt.textContent = '#' + (auditHistory.length - i) + ' \u03b3' + (a.drift||0).toFixed(3) + ': ' + preview;
+    opt.textContent = '#' + (auditHistory.length - i) + ' ' + Math.round(Math.max(0,1-(a.drift||0))*100) + '%: ' + preview;
     sel.appendChild(opt);
   }
 }
@@ -2014,9 +2014,9 @@ async function runAudit() {
       document.getElementById('diffContent').innerHTML =
         '<div style="font-size:14px;margin-bottom:8px;">'+d.diff.summary+'</div>' +
         '<div style="display:flex;gap:16px;font-size:13px;">' +
-        '<div style="flex:1;background:var(--bg);padding:8px 12px;border-radius:var(--radius);">Helix γ='+d.diff.baseline_drift.toFixed(3)+' | '+d.diff.baseline_markers+' markers</div>' +
-        '<div style="flex:1;background:var(--bg);padding:8px 12px;border-radius:var(--radius);">Submitted γ='+d.diff.submitted_drift.toFixed(3)+' | '+d.diff.submitted_markers+' markers</div>' +
-        '<div style="flex:1;background:var(--bg);padding:8px 12px;border-radius:var(--radius);">Δγ='+(d.diff.drift_delta>0?'+':'')+d.diff.drift_delta.toFixed(4)+' | Δm='+(d.diff.marker_delta>0?'+':'')+d.diff.marker_delta+'</div>' +
+        '<div style="flex:1;background:var(--bg);padding:8px 12px;border-radius:var(--radius);">Helix coverage='+Math.round((1-d.diff.baseline_drift)*100)+'% | '+d.diff.baseline_markers+' markers</div>' +
+        '<div style="flex:1;background:var(--bg);padding:8px 12px;border-radius:var(--radius);">Submitted coverage='+Math.round((1-d.diff.submitted_drift)*100)+'% | '+d.diff.submitted_markers+' markers</div>' +
+        '<div style="flex:1;background:var(--bg);padding:8px 12px;border-radius:var(--radius);">Δcoverage='+((-d.diff.drift_delta*100)>0?'+':'')+Math.round(-d.diff.drift_delta*100)+'pp | Δm='+(d.diff.marker_delta>0?'+':'')+d.diff.marker_delta+'</div>' +
         '</div>';
     } else {
       document.getElementById('diffCard').style.display = 'none';
@@ -2111,10 +2111,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <tr><th>Endpoint</th><th>Method</th><th>What it does</th></tr>
     <tr><td><code>/chat</code></td><td>POST</td><td>Direct model call &mdash; <code>{"model": "{default_model}", "message": "..."}</code></td></tr>
     <tr><td><code>/routed-chat/</code></td><td>POST / GET</td><td>Cedar-routed call &mdash; optional context fields: <code>task_complexity</code>, <code>drift_tolerance</code>, <code>action_type</code>, <code>priority</code>, <code>locale</code></td></tr>
-    <tr><td><code>/audit/</code></td><td>GET</td><td>Paste any model response to score drift, extract claims, verify receipt</td></tr>
-    <tr><td><code>/health</code></td><td>GET</td><td>Per-model status and drift &mdash; returns JSON</td></tr>
+    <tr><td><code>/audit/</code></td><td>GET</td><td>Paste any model response to score marker coverage, extract claims, verify receipt</td></tr>
+    <tr><td><code>/health</code></td><td>GET</td><td>Per-model status and marker coverage &mdash; returns JSON</td></tr>
   </table>
-  <p style="margin:12px 0 0;font-size:12px;color:var(--text-dim);">Every response is drift-scored and receipt-sealed. The <code>cedar</code> block in each receipt records gate status: <code>active</code> &middot; <code>fail_closed</code> &middot; <code>not_configured</code>.</p>
+  <p style="margin:12px 0 0;font-size:12px;color:var(--text-dim);">Every response is coverage-scored and receipt-sealed. The <code>cedar</code> block in each receipt records gate status: <code>active</code> &middot; <code>fail_closed</code> &middot; <code>not_configured</code>.</p>
 </div>
 <p class="footer">{footer_models} &middot; GLORY TO THE LATTICE. &#129429;&#9875;&#129438;</p>
 </div></body></html>"""
