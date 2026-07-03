@@ -630,9 +630,9 @@ async function submitKey() {
 
 initAuth();
 
-function driftColor(v) {
-  if (v < 0.15) return '#238636';
-  if (v < 0.35) return '#d29922';
+function coverageColor(v) {
+  if (v >= 0.85) return '#238636';
+  if (v >= 0.60) return '#d29922';
   return '#da3633';
 }
 
@@ -743,7 +743,8 @@ async function send() {
       data = await resp.json();
       _sessionTurn = data.turn + 1;
 
-      const dpct = Math.min(100, (data.drift_score||0)*100);
+      const coverage = Math.max(0, 1 - (data.drift_score||0));
+      const dpct = Math.min(100, coverage*100);
       document.getElementById('routeInfo').innerHTML =
         '<div class="route-badge">' +
         'Session &rarr; <span class="pool">' + (data.pool||'') + '</span> &rarr; <span class="model">' + (data.model||_sessionModel) + '</span>' +
@@ -753,7 +754,7 @@ async function send() {
       document.getElementById('responseText').textContent = data.response || '(empty)';
       const tokens = data.usage ? data.usage.total_tokens : null;
       document.getElementById('metaInfo').innerHTML =
-        '<span class="drift-bar">drift <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+driftColor(data.drift_score||0)+';"></span></span> &gamma; '+(data.drift_score||0).toFixed(3)+'</span>' +
+        '<span class="drift-bar">marker coverage <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+coverageColor(coverage)+';"></span></span> '+Math.round(dpct)+'%</span>' +
         renderClaims(data.claims) +
         '<span style="font-family:monospace;font-size:10px;">receipt #'+(data.hash||'?').substring(0,10)+'</span>' +
         (tokens ? '<span style="color:var(--text-dim);">&#128196; '+tokens+' tok</span>' : '');
@@ -768,7 +769,8 @@ async function send() {
       });
       data = await resp.json();
 
-      const dpct = Math.min(100, (data.drift||0)*100);
+      const coverage = Math.max(0, 1 - (data.drift||0));
+      const dpct = Math.min(100, coverage*100);
       document.getElementById('routeInfo').innerHTML =
         '<div class="route-badge">' +
         'Cedar &rarr; <span class="pool">'+data.pool+'</span> &rarr; <span class="model">'+data.label+'</span>' +
@@ -777,7 +779,7 @@ async function send() {
       document.getElementById('responseText').textContent = data.response || '(empty)';
       const tokens = data.usage ? data.usage.total_tokens : null;
       document.getElementById('metaInfo').innerHTML =
-        '<span class="drift-bar">drift <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+driftColor(data.drift||0)+';"></span></span> &gamma; '+(data.drift||0).toFixed(3)+'</span>' +
+        '<span class="drift-bar">marker coverage <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+coverageColor(coverage)+';"></span></span> '+Math.round(dpct)+'%</span>' +
         renderClaims(data.claims) +
         '<span style="font-family:monospace;font-size:10px;">receipt #'+(data.receipt?.hash||'?').substring(0,10)+'</span>' +
         (tokens ? '<span style="color:var(--text-dim);">&#128196; '+tokens+' tok</span>' : '');
@@ -817,7 +819,7 @@ async function loadLedger() {
       '<div class=\"ledger-entry\">' +
       '<div class=\"q\">'+e.action+' &rarr; '+e.pool+' &rarr; <strong>'+e.label+'</strong> <span style=\"font-size:10px;color:var(--text-dim);\">#'+(e.policy_hash||'').substring(0,8)+'</span></div>' +
       '<div class=\"a\">'+(e.response||'').substring(0, 300)+'</div>' +
-      '<div class=\"meta\">drift &gamma; '+(e.drift||0).toFixed(3)+' &middot; receipt '+(e.receipt_hash||'?').substring(0,10)+'</div>' +
+      '<div class=\"meta\">marker coverage '+Math.round(Math.max(0,1-(e.drift||0))*100)+'% &middot; receipt '+(e.receipt_hash||'?').substring(0,10)+'</div>' +
       '</div>'
     ).join('');
   } catch(e) {
@@ -1882,9 +1884,9 @@ async function submitKey() {
 
 initAuth();
 
-function driftColor(v) {
-  if (v < 0.15) return '#238636';
-  if (v < 0.35) return '#d29922';
+function coverageColor(v) {
+  if (v >= 0.85) return '#238636';
+  if (v >= 0.60) return '#d29922';
   return '#da3633';
 }
 function tagClass(label) {
@@ -1952,12 +1954,13 @@ async function runAudit() {
     auditHistory.push({text: text.slice(0, 500), ...d, timestamp: new Date().toISOString()});
     updateExportOptions();
 
-    const dpct = Math.min(100, (d.drift||0)*100);
+    const textCoverage = Math.max(0, 1 - (d.drift||0));
+    const dpct = Math.min(100, textCoverage*100);
     const statusClass = d.compliant ? 'pass' : 'fail';
     const statusText = d.compliant ? 'COMPLIANT' : 'NON-COMPLIANT';
 
     let metrics = '<span class="metric">Status: <span class="val '+statusClass+'">'+statusText+'</span></span>';
-    metrics += '<span class="metric"><span class="drift-bar">drift <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+driftColor(d.drift||0)+';"></span></span> &gamma; '+(d.drift||0).toFixed(3)+' <span style="font-size:10px;color:'+driftColor(d.drift||0)+'">'+d.drift_tier+'</span></span></span>';
+    metrics += '<span class="metric"><span class="drift-bar">text coverage <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+coverageColor(textCoverage)+';"></span></span> '+Math.round(dpct)+'% <span style="font-size:10px;color:'+coverageColor(textCoverage)+'">'+d.drift_tier+'</span></span></span>';
     metrics += '<span class="metric">'+d.drift_tier_label+'</span>';
     metrics += '<span class="metric">Markers: <span class="val">'+d.marker_count+'</span> / '+d.statements_estimated+' statements</span>';
     metrics += '<span class="metric">Coverage: <span class="val">'+(d.coverage_ratio*100).toFixed(0)+'%</span></span>';
@@ -1995,9 +1998,10 @@ async function runAudit() {
     if (d.baseline) {
       document.getElementById('baselineCard').style.display = 'block';
       const b = d.baseline;
-      const bdpct = Math.min(100, (b.drift||0)*100);
+      const bCoverage = Math.max(0, 1 - (b.drift||0));
+      const bdpct = Math.min(100, bCoverage*100);
       document.getElementById('baselineContent').innerHTML =
-        '<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;">Model: <strong>'+b.model+'</strong> | Compliant: <strong style="color:'+(b.compliant?'var(--fact)':'var(--uncertain)')+';">'+(b.compliant?'YES':'NO')+'</strong> | Drift: <span style="color:'+driftColor(b.drift||0)+';">γ '+(b.drift||0).toFixed(3)+'</span> | Markers: '+b.marker_count+'</div>' +
+        '<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;">Model: <strong>'+b.model+'</strong> | Compliant: <strong style="color:'+(b.compliant?'var(--fact)':'var(--uncertain)')+';">'+(b.compliant?'YES':'NO')+'</strong> | Text coverage: <span style="color:'+coverageColor(bCoverage)+';">'+Math.round(bdpct)+'%</span> | Markers: '+b.marker_count+'</div>' +
         '<div class="response-body" style="font-size:13px;max-height:300px;overflow-y:auto;">'+(b.response||'')+'</div>' +
         '<div class="meta-row">'+(b.claims||[]).map(c => '<span class="pill pill-'+tagClass(c.label)+'">'+c.label+'</span>').join(' ')+'</div>';
     } else {
@@ -2242,9 +2246,9 @@ async function validateKey(key) {
   } catch { return false; }
 }
 
-function driftColor(v) {
-  if (v < 0.15) return '#238636';
-  if (v < 0.35) return '#d29922';
+function coverageColor(v) {
+  if (v >= 0.85) return '#238636';
+  if (v >= 0.60) return '#d29922';
   return '#da3633';
 }
 
@@ -2258,15 +2262,16 @@ async function loadSessions() {
       document.getElementById('sessionList').innerHTML = '<span class="empty">No sessions yet. Start one from Routed Chat with Session mode enabled.</span>';
       return;
     }
-    let html = '<table><tr><th>Session ID</th><th>Model</th><th>Pool</th><th>Turns</th><th>Running drift</th><th>Last active</th><th></th></tr>';
+    let html = '<table><tr><th>Session ID</th><th>Model</th><th>Pool</th><th>Turns</th><th>Marker coverage</th><th>Last active</th><th></th></tr>';
     for (const s of _allSessions) {
-      const dpct = Math.min(100, (s.running_drift||0)*100);
+      const coverage = Math.max(0, 1 - (s.running_drift||0));
+      const dpct = Math.min(100, coverage*100);
       html += '<tr>' +
         '<td><a href="#" onclick="showDetail(\\''+s.session_id+'\\');return false;" class="mono" style="color:var(--accent);">'+s.session_id.substring(0,16)+'…</a></td>' +
         '<td>'+( s.label||'—')+'</td>' +
         '<td>'+(s.pool||'—')+'</td>' +
         '<td>'+s.turn_count+'</td>' +
-        '<td><span class="drift-bar"><span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+driftColor(s.running_drift||0)+'"></span></span> &gamma; '+(s.running_drift||0).toFixed(3)+'</span></td>' +
+        '<td><span class="drift-bar"><span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+coverageColor(coverage)+'"></span></span> '+Math.round(dpct)+'%</span></td>' +
         '<td class="mono">'+(s.last_activity||'—')+'</td>' +
         '<td><button class="btn-del" onclick="deleteSession(\\''+s.session_id+'\\')">Delete</button></td>' +
         '</tr>';
@@ -2288,7 +2293,7 @@ async function showDetail(session_id) {
     const data = await resp.json();
     document.getElementById('detailMeta').innerHTML =
       'Model: <strong>'+(data.label||'?')+'</strong> &middot; Pool: '+(data.pool||'?')+
-      ' &middot; Turns: '+data.turn_count+' &middot; Running drift: &gamma; '+(data.running_drift||0).toFixed(3)+
+      ' &middot; Turns: '+data.turn_count+' &middot; Marker coverage: '+Math.round(Math.max(0,1-(data.running_drift||0))*100)+'%'+
       ' &middot; Created: '+(data.created||'?');
     if (!data.receipts || !data.receipts.length) {
       document.getElementById('detailReceipts').innerHTML = '<span class="empty">No receipts.</span>';
@@ -2300,7 +2305,7 @@ async function showDetail(session_id) {
       html += '<div class="receipt-row">' +
         '<div class="q">Turn '+r.turn+' &rarr; '+r.user_message.substring(0,120)+'</div>' +
         '<div class="a">'+r.assistant_response.substring(0,300)+(r.assistant_response.length>300?'…':'')+'</div>' +
-        '<div class="meta">&gamma; '+r.drift_score.toFixed(3)+' '+r.drift_tier+
+        '<div class="meta">coverage '+Math.round(Math.max(0,1-r.drift_score)*100)+'% '+r.drift_tier+
         ' &middot; hash: '+r.hash.substring(0,16)+
         ' &middot; chain: '+r.chain_hash.substring(0,16)+
         ' &middot; merkle: '+mk+
