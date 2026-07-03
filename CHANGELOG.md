@@ -7,6 +7,36 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.7.1] — 2026-07-03
+
+### Fixed
+
+- **Foundry session mode always failed on the first message.** `/session/start`
+  built a `HelixSession` in memory and discarded it, returning only the
+  `session_id`. `/session/{id}/send` then unconditionally resumed from the
+  receipt store, which has no turns yet on message 1 — every new session
+  404'd with "No session found" before it could send anything. `build_session()`
+  now only resumes when the store actually has prior turns for that session id;
+  otherwise it builds fresh under the pre-assigned id.
+
+### Changed
+
+- **Foundry dashboard: relabeled the marker-completeness score away from
+  "drift"/γ.** `compute_drift()`'s output (fraction of response text without
+  an epistemic marker) reused the "drift" name, the γ symbol, and a 0.17
+  threshold borrowed from the unrelated constitutional tolerance measure —
+  a plain conversational reply with no markers would max out and show as
+  "drift detected — red" even though nothing was constitutionally wrong.
+  The `/routed-chat/`, `/sessions/`, and `/audit/` pages now show "marker
+  coverage" (or "text coverage" on the audit page, to avoid colliding with
+  its existing statement-based `Coverage` stat) as a percentage, with its
+  own color thresholds. The Cedar routing-sensitivity selector is relabeled
+  "routing tolerance" instead of "drift tol." — a different concept that
+  happened to share the word. No API/schema changes: `drift_score`,
+  `drift_tier`, `drift_tolerance`, and `DriftThreshold` are unchanged.
+
+---
+
 ## [1.7.0] — 2026-07-02
 
 ### Summary
