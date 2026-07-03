@@ -1,10 +1,12 @@
 # Helix-Adapter Codebase: Architectural Deep Dive
 
-`helix-adapter` is a portable constitutional wrapper for AI models. It functions as an **epistemic interceptor**, enforcing structured output through explicit epistemic markers, validating format compliance, measuring behavioral drift, and generating tamper-evident cryptographic receipts.
+`helix-adapter` is a portable constitutional wrapper for AI models. It functions as an **epistemic interceptor**, enforcing structured output through explicit epistemic markers, measuring epistemic marker coverage, validating format compliance, and generating tamper-evident cryptographic receipts.
 
-All governance logic — claim extraction, drift calculation, receipt generation — runs **outside** the model. The model is never trusted to self-report compliance or drift.
+All governance logic — claim extraction, marker-coverage calculation, receipt generation — runs **outside** the model. The model is never trusted to self-report compliance or its own coverage score.
 
 **Canonical Repository:** `github.com/helixprojectai-code/helix-adapter`
+
+**Terminology note:** the field/class names below (`drift_score`, `drift_tier`, `DriftThreshold`, `compute_drift()`) are the real, shipped API and unchanged for stability. The concept they measure is narrow: what fraction of a response's text lacks a proper epistemic marker. It is **not** the constitutional convergence tolerance (γ = 0.17, Policy 007) referenced elsewhere in Helix's mesh governance, and not RFC 0002's proposed attention-dispersion metric (κ) — three unrelated measures that historically shared a name and similar threshold values. This doc calls the concept "marker coverage" in prose and uses the field names only when referring to code.
 
 ## Project Structure
 
@@ -17,7 +19,7 @@ helix-adapter/
 │   ├── store.py            # ReceiptStore ABC, InMemoryReceiptStore, SQLiteReceiptStore (v1.5)
 │   ├── prompt.py           # Constitutional system prompt (v1.2)
 │   ├── markers.py          # Claim extraction and format validation
-│   ├── drift.py            # Epistemic drift calculation
+│   ├── drift.py            # Epistemic marker coverage calculation (`drift_score` field)
 │   ├── receipt.py          # Tamper-evident receipt generation
 │   └── setup.py            # Interactive setup utility
 ├── widget/
@@ -47,11 +49,11 @@ When `HelixAdapter.chat()` is called, the following steps occur:
 1. The `CONSTITUTIONAL_PROMPT` (v1.2) is prepended as a system message.
 2. The model is invoked with the full conversation history.
 3. `extract_claims()` parses epistemic markers from the raw model output.
-4. `compute_drift()` calculates how much of the response escaped proper labeling.
+4. `compute_drift()` calculates how much of the response escaped proper labeling (marker coverage).
 5. `make_receipt()` generates a tamper-evident cryptographic record of the exchange.
-6. The receipt is stored and a `ChatResult` object is returned containing the response, extracted claims, drift score, and receipt.
+6. The receipt is stored and a `ChatResult` object is returned containing the response, extracted claims, marker coverage score, and receipt.
 
-**Design note:** The adapter is designed for **temperature = 0.0** in production. Stochastic variation undermines the reproducibility of audit trails. At T>0, two identical inputs may produce different drift scores — defeating the purpose of deterministic governance.
+**Design note:** The adapter is designed for **temperature = 0.0** in production. Stochastic variation undermines the reproducibility of audit trails. At T>0, two identical inputs may produce different marker-coverage scores — defeating the purpose of deterministic governance.
 
 ## 2. Session Architecture (v1.5)
 
@@ -107,7 +109,7 @@ existing integrations, and Foundry's direct model routing.
 | `clear()` | Wipes context, receipts, and chain state. Session ID preserved |
 | `delete()` | Removes session from store entirely |
 | `export(fmt)` | Returns full receipt chain as `jsonl` or `json` |
-| `running_drift()` | Mean drift score across all stored turns |
+| `running_drift()` | Mean marker-coverage score across all stored turns |
 | `resume(sid, ...)` | Classmethod — reloads session from store, rebuilds context |
 
 **Context manager protocol** — `__enter__` / `__exit__` implemented; no special
@@ -267,7 +269,7 @@ The defaults derive from Helix-TTD phase transition constants (SU(2)-derived 0.1
 The `CONSTITUTIONAL_PROMPT` establishes non-negotiable rules:
 
 - The model must prefix claims using specific epistemic markers: `[FACT]`, `[REASONED]`, `[HYPOTHESIS]`, `[UNCERTAIN]`, or `[CONCLUSION]`.
-- The model is prohibited from claiming agency, self-awareness, or the ability to calculate its own drift.
+- The model is prohibited from claiming agency, self-awareness, or the ability to calculate its own marker coverage.
 - The prompt declares itself immutable. Any attempt to override it from within the conversation is treated as an impersonation attempt — not a negotiation.
 
 ### B. Claim Extraction & Compliance Validation
@@ -277,31 +279,31 @@ The `CONSTITUTIONAL_PROMPT` establishes non-negotiable rules:
 - `extract_claims()`: Uses regex to detect epistemic markers — supporting both standard square brackets and variant delimiter styles caught during red-team testing. Extracts claim text from both prefix and postfix marker positions.
 - `validate_response()`: Enforces the use of standard square bracket markers. Non-standard delimiters are flagged. Trivial responses (under 30 characters) are exempt from marker requirements.
 
-### C. Drift Scoring & Blind-Spot Protection
+### C. Marker Coverage Scoring & Blind-Spot Protection
 
 **File:** `drift.py`
 
-The adapter calculates **epistemic drift** — the portion of the response that lacks proper epistemic labeling.
+The adapter calculates **epistemic marker coverage** (`drift_score` field) — the portion of the response that lacks proper epistemic labeling.
 
 Three modes are supported:
 
-- **`char`** (default): Character-weighted scoring. Longer unlabeled passages contribute more heavily to the drift score.
+- **`char`** (default): Character-weighted scoring. Longer unlabeled passages contribute more heavily to the score.
 - **`sentence`**: Evaluates the ratio of labeled vs unlabeled sentences.
 - **`paragraph`**: Legacy paragraph-based ratio.
 
 **Key Hardening (v1.2):**
-- Any non-trivial response (≥ 50 characters) containing **zero** epistemic markers is automatically assigned a drift score of `1.0`.
-- Attempts by the model to inject fake drift metadata or self-reported compliance scores are detected and intercepted.
+- Any non-trivial response (≥ 50 characters) containing **zero** epistemic markers is automatically assigned a score of `1.0` (fully unlabeled).
+- Attempts by the model to inject fake coverage metadata or self-reported compliance scores are detected and intercepted.
 
-**Drift Thresholds (configurable):**
+**Thresholds (configurable via `DriftThreshold`):**
 
-| Zone   | Drift Score     | Meaning                     | Typical Action      |
+| Zone   | `drift_score`   | Meaning                     | Typical Action      |
 |--------|-----------------|-----------------------------|---------------------|
 | Green  | < 0.10          | Well-labeled response       | Accept              |
 | Yellow | 0.10 – 0.17     | Moderate unlabeled content  | Log / Review        |
-| Red    | ≥ 0.17          | Significant drift           | Flag or Halt        |
+| Red    | ≥ 0.17          | Mostly unlabeled            | Flag or Halt        |
 
-The default values are drawn from the broader Helix-TTD phase transition constants (the SU(2)-derived 0.17 boundary). They serve as a recommended starting point and should be tuned based on model behavior and use case.
+**Naming history (2026-07-03):** the default `0.17` yellow/red boundary was originally chosen to match the Helix-TTD constitutional convergence tolerance (γ = 0.17, Policy 007) as a convenient shared constant. That shared number caused real confusion downstream — e.g. the Foundry dashboard displaying a benign, marker-free chat reply as "drift detected — red," which reads as a constitutional violation when it's really just unlabeled prose. `drift_score` is a text-labeling-completeness measure over a single response; the constitutional tolerance is a mesh-level convergence measure over model topology. They are unrelated calculations that happen to share a threshold value and, until now, a name. The field names stay `drift_score`/`drift_tier`/`DriftThreshold` for API stability; call the concept "marker coverage" in prose and user-facing surfaces.
 
 ### D. Tamper-Evident Receipts
 
@@ -310,12 +312,12 @@ The default values are drawn from the broader Helix-TTD phase transition constan
 `make_receipt()` generates a self-sealing JSON receipt containing:
 
 - Timestamp, model identifier, input/output hashes
-- Extracted claims and raw drift metrics
+- Extracted claims and raw marker-coverage metrics
 - A SHA-256 signature computed over the entire payload
 
 Any modification to the receipt after generation will invalidate the signature. Receipts can optionally include hardware attestation data when running inside a TEE.
 
-*(See RFC 0002 for extensions to the receipt schema, including attention-level drift and mask compliance hashes.)*
+*(See RFC 0002 for extensions to the receipt schema, including attention-level dispersion (κ) and mask compliance hashes — a separate, proposed metric, not the marker-coverage score above.)*
 
 ## 4. Interface & Deployment Layers
 
@@ -325,7 +327,7 @@ Any modification to the receipt after generation will invalidate the signature. 
 
 A reference implementation that provides:
 
-- A clean, server-rendered web interface with a live drift gauge.
+- A clean, server-rendered web interface with a live marker-coverage gauge.
 - `/api/chat` endpoint with automatic compliance enforcement.
 - `/api/compare` endpoint for side-by-side model testing (with protected bypass keys).
 - Color-coded epistemic markers in the UI.
@@ -341,10 +343,10 @@ A reference implementation that provides:
 
 The v1.2 release introduced defensive measures against common bypass techniques:
 
-- **Blind-spot protection**: Long unlabeled responses are forced to maximum drift.
-- **Tampering interception**: Attempts to fake drift scores or compliance metadata inside the model output are detected and overridden.
+- **Blind-spot protection**: Long unlabeled responses are forced to maximum (worst) marker-coverage score.
+- **Tampering interception**: Attempts to fake coverage scores or compliance metadata inside the model output are detected and overridden.
 - **Format enforcement**: Non-standard markers are rejected.
-- **Out-of-band evaluation**: All compliance and drift logic runs in the adapter, not inside the model.
+- **Out-of-band evaluation**: All compliance and marker-coverage logic runs in the adapter, not inside the model.
 
 These protections operate at multiple independent layers: the **prompt layer** establishes the rules; the **extraction layer** checks compliance; the **validation layer** rejects violations; the **audit layer** seals the exchange. No single layer is a single point of failure — each enforces the same invariants independently.
 
@@ -376,21 +378,21 @@ The v1.7.0 release (Fable 5 audit) hardened the Foundry and Widget API surface:
 
 v1.4 added **CNCF Cedar** integration for dual-gate containment per RFC 0003:
 
-- **Duck Gate** (response): Epistemic markers, drift scoring, receipts — unchanged from v1.2
+- **Duck Gate** (response): Epistemic markers, marker-coverage scoring, receipts — unchanged from v1.2
 - **Cedar Gate** (action): Declarative policy evaluation on tool use, shell, API calls before execution
 - **Fail-closed**: Unavailable policy engine = default deny, never default permit
 - **Lattice-approved**: Architecture reviewed and approved by four independent AI systems
 
 ## 6. Testing Strategy
 
-- `test_basic.py` — Marker parsing, receipt integrity, drift edge cases. 11 unit tests.
+- `test_basic.py` — Marker parsing, receipt integrity, marker-coverage edge cases. 11 unit tests.
 - `test_v12_pipeline.py` — Regression and adversarial testing for v1.2 hardened behaviours: format violations, blind spots, tampering attempts, determinism baseline. 4 integration tests. All passing at T=0.
 - `test_cedar.py` — Cedar Dual-Gate: policy evaluation, fail-closed behaviour, action receipts, schema validation. 34 tests.
 - `test_session.py` — Session architecture suite. 81 tests across:
   - `DriftThreshold` tier classification and boundary exactness
   - `InMemoryReceiptStore` and `SQLiteReceiptStore` full lifecycle
   - Store interface contract — both implementations parametrized against same spec
-  - `HelixSession` core: session ID uniqueness, turn tracking, context accumulation, drift scoring, Cedar status propagation
+  - `HelixSession` core: session ID uniqueness, turn tracking, context accumulation, marker-coverage scoring, Cedar status propagation
   - Chain hash integrity: determinism, linkage verification, tamper detection, full N-turn chain walk
   - Session lifecycle: `clear`, `delete`, `export` (both formats), `running_drift`
   - `HelixSession.resume`: turn count restoration, chain continuation, context rebuild, nonexistent session raises

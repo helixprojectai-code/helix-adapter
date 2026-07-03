@@ -71,8 +71,10 @@ The drift has exceeded the safety threshold. The model has entered a state of un
 
 To enforce this window, Helix utilizes two distinct, out-of-band layers that sit outside the model's internal weights:
 
-* **The Duck Gate (Epistemic Governance):** Monitors $\delta$ in real-time. It extracts epistemic markers and calculates the $\gamma$-drift score to ensure the model remains within the $[\varepsilon_0, \varepsilon)$ interval.
+* **The Duck Gate (Epistemic Governance):** Extracts epistemic markers and calculates `drift_score` — a computable, narrow proxy for $\delta$ (fraction of response text lacking a marker), used as a legible real-time signal that the model remains within the $[\varepsilon_0, \varepsilon)$ interval. It is a proxy, not an identity: `drift_score` measures marker coverage over a single response's text; $\delta$ is the abstract epistemic-drift quantity in the Stability Function above. They move together in practice but are not the same measurement.
 * **The Cedar Gate (Operational Governance):** Enforces the hard boundaries of ε by using **CNCF Cedar** to deterministically authorize or block agentic actions (API calls, shell commands, etc.) before they reach the execution layer.
+
+**Naming note (2026-07-03):** earlier drafts of this document called the Duck Gate's computed signal the "$\gamma$-drift score." That symbol collided with two other unrelated measures — Helix's constitutional convergence tolerance ($\gamma$ = 0.17, Policy 007, a mesh-level topology measure) and RFC 0002's proposed attention-dispersion metric ($\kappa$, a per-layer entropy measure). All three are legitimate, independently useful measures; none of them are interchangeable with the others or with the abstract $\delta$ above. This document no longer uses $\gamma$ for anything — Duck Gate's shipped metric is `drift_score` in code and "marker coverage" in prose.
 
 **The model suggests. The adapter governs. The receipt proves it.**
 

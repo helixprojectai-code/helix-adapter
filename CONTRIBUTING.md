@@ -4,9 +4,9 @@ First off — thank you. This project exists because people who care about struc
 
 ## Scope
 
-We welcome contributions that improve the adapter's ability to enforce epistemic discipline, measure drift, and produce tamper-evident receipts. This includes:
+We welcome contributions that improve the adapter's ability to enforce epistemic discipline, measure marker coverage, and produce tamper-evident receipts. This includes:
 
-- **Bug reports** — especially boundary conditions in marker extraction, drift calculation, or receipt generation
+- **Bug reports** — especially boundary conditions in marker extraction, marker-coverage calculation, or receipt generation
 - **Red-team findings** — if you find a way to bypass constitutional invariants, we want to know
 - **Documentation** — clarity, correctness, examples
 - **Tests** — regression tests for edge cases discovered in the wild
@@ -15,7 +15,7 @@ We welcome contributions that improve the adapter's ability to enforce epistemic
 ## What We Don't Merge
 
 - Changes that weaken constitutional invariants
-- Features that depend on model self-reporting (the model is never trusted to self-report compliance or drift)
+- Features that depend on model self-reporting (the model is never trusted to self-report compliance or its own coverage score)
 - Anything that removes or relaxes the out-of-band enforcement layer
 
 ## How to Contribute

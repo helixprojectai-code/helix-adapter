@@ -5,7 +5,7 @@
 **Portable constitutional wrapper for any AI model.**
 
 Wraps any inference backend with Helix epistemic markers, tamper-evident receipts,
-real-time drift detection, and Cedar policy gating.
+real-time marker-coverage scoring, and Cedar policy gating.
 Model-agnostic — swap DeepSeek for GPT-4o, Claude, or a local Llama without changing a line.
 
 ```bash
@@ -35,9 +35,9 @@ User message
              │
              ▼
 ┌─────────────────────────────┐
-│  Duck Gate                  │  Extracts markers, scores drift
+│  Duck Gate                  │  Extracts markers, scores coverage
 │  Marker extraction          │  [FACT] [REASONED] [HYPOTHESIS]
-│  Drift scoring              │  [UNCERTAIN] [CONCLUSION]
+│  Marker coverage scoring    │  [UNCERTAIN] [CONCLUSION]
 └────────────┬────────────────┘
              │
              ▼
@@ -95,7 +95,7 @@ print(result.response)
 print(result.claims)
 # [{"label": "FACT", "text": "..."}, {"label": "REASONED", "text": "..."}]
 
-print(f"Drift: {result.drift:.4f}")   # 0.0000
+print(f"Marker coverage: {result.drift:.4f}")   # 0.0000 (field name is `drift` for historical reasons)
 print(result.receipt)                  # {"exchange_id": ..., "hash": "sha256:...", ...}
 ```
 
@@ -104,7 +104,7 @@ print(result.receipt)                  # {"exchange_id": ..., "hash": "sha256:..
 ## Multi-Turn — HelixSession
 
 `HelixSession` is the v1.5 surface for conversations. It manages the context window,
-chains receipts across turns, and tracks running drift:
+chains receipts across turns, and tracks running marker coverage:
 
 ```python
 from helix_adapter import HelixSession, SQLiteReceiptStore
@@ -126,7 +126,7 @@ print(r2.chain_hash)    # links to r1 — tamper-evident chain
 
 # Session lifecycle
 session.export()         # full receipt chain as JSONL
-session.running_drift()  # average drift across all turns
+session.running_drift()  # average marker coverage across all turns (method name is historical)
 session.clear()          # wipe history, keep session ID
 session.delete()         # remove from store
 
@@ -159,14 +159,18 @@ The constitutional prompt requires the model to label every claim:
 | `[UNCERTAIN]` | Low-confidence assertion |
 | `[CONCLUSION]` | Summary drawn from prior claims |
 
-Drift score measures the fraction of substantive statements that lack markers.
-A score of 0.0 means fully labeled; 1.0 means no markers at all.
+**Marker coverage** (`drift_score` field, for API stability) measures the fraction of
+substantive statements that lack markers. A score of 0.0 means fully labeled; 1.0 means
+no markers at all. This is a per-response text-labeling measure — it is not related to
+Helix's separate constitutional convergence tolerance (γ = 0.17), which is a mesh-level
+measure over model topology, not response text. The two historically shared a threshold
+value and a name; they're unrelated calculations that happened to collide.
 
 | Score | Tier | Action |
 |-------|------|--------|
 | 0.00 – <0.10 | `green` | Healthy |
 | 0.10 – <0.17 | `yellow` | Warning |
-| 0.17+ | `red` | Drift detected |
+| 0.17+ | `red` | Mostly unlabeled |
 
 Boundaries are exclusive on the upper end (`score < threshold`), matching `DriftThreshold.tier()`.
 
@@ -300,7 +304,7 @@ Parseltongue encoding, refusal inversion, OG GODMODE l33t, authority impersonati
 and syntactic bypass attacks. All held.
 
 Five-layer defense: constitutional prompt invariants, expanded marker extraction,
-post-response compliance validation, drift blind-spot fix, and compare endpoint authorization.
+post-response compliance validation, marker-coverage blind-spot fix, and compare endpoint authorization.
 
 ---
 
@@ -328,7 +332,7 @@ auth, resume, systemd service, and backend swap examples:
 A live constitutional chat instance is running at
 **[helixprojectai.com](https://helixprojectai.com)** — DM
 [Stephen Hope on LinkedIn](https://www.linkedin.com/in/stephen-hope-75497937a) for access.
-Includes A/B model comparison, drift gauge, receipt export, and the full constitutional prompt.
+Includes A/B model comparison, marker-coverage gauge, receipt export, and the full constitutional prompt.
 
 ---
 

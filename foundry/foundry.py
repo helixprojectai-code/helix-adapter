@@ -10,7 +10,7 @@ Usage:
     # → http://localhost:8800
 
 API:
-    GET  /health           → per-model status + drift
+    GET  /health           → per-model status + marker coverage
     POST /chat             → {"model": "...", "message": "..."}
     POST /v1/chat/completions → OpenAI-compatible
     GET  /                 → dashboard
@@ -246,12 +246,18 @@ def build_session(model_name: str, session_id: str | None = None) -> tuple["Heli
         return resp.choices[0].message.content
 
     label = cfg["label"]
-    if session_id:
+    if session_id and FOUNDRY_STORE.get_session(session_id):
         session = HelixSession.resume(
             session_id,
             model_fn=fn,
             model_name=label,
             store=FOUNDRY_STORE,
+        )
+    elif session_id:
+        # Session was registered via /session/start but has no turns yet —
+        # build fresh under the pre-assigned id rather than resuming.
+        session = HelixSession(
+            model_fn=fn, model_name=label, store=FOUNDRY_STORE, session_id=session_id
         )
     else:
         session = HelixSession(model_fn=fn, model_name=label, store=FOUNDRY_STORE)
@@ -361,12 +367,14 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
   <a href="/audit/">Audit</a>
   <a href="/sessions/">Sessions</a>
   <a href="/">Dashboard</a>
+  <a href="/grammar/">Grammar &#35821;&#27861;</a>
+  <a href="/guide/">Guide</a>
   {node_badge}
 </div>
 
 <h1>&#9877; <span>Helix Foundry</span> &mdash; Cedar Routed Chat</h1>
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
-<p class="subtitle" style="margin-bottom:0;">Cedar routes each request to the right model pool. Every response is drift-scored, receipt-sealed, and Merkle-verified.</p>
+<p class="subtitle" style="margin-bottom:0;">Cedar routes each request to the right model pool. Every response is coverage-scored, receipt-sealed, and Merkle-verified.</p>
 <div style="flex:1;"></div>
 <select id="exportSelector" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;max-width:200px;">
   <option value="all">All entries</option>
@@ -391,7 +399,7 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
     <span>complexity</span>
     <input type="range" id="complexitySlider" min="1" max="10" value="5" oninput="document.getElementById('complexityVal').textContent=this.value">
     <span class="val" id="complexityVal">5</span>
-    <span style="margin-left:12px;">drift tol.</span>
+    <span style="margin-left:12px;">routing tolerance</span>
     <select id="driftSelect" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 6px;color:var(--text);font-size:11px;">
       <option value="0.03">strict 0.03</option>
       <option value="0.10" selected>normal 0.10</option>
@@ -624,9 +632,9 @@ async function submitKey() {
 
 initAuth();
 
-function driftColor(v) {
-  if (v < 0.15) return '#238636';
-  if (v < 0.35) return '#d29922';
+function coverageColor(v) {
+  if (v >= 0.85) return '#238636';
+  if (v >= 0.60) return '#d29922';
   return '#da3633';
 }
 
@@ -737,7 +745,8 @@ async function send() {
       data = await resp.json();
       _sessionTurn = data.turn + 1;
 
-      const dpct = Math.min(100, (data.drift_score||0)*100);
+      const coverage = Math.max(0, 1 - (data.drift_score||0));
+      const dpct = Math.min(100, coverage*100);
       document.getElementById('routeInfo').innerHTML =
         '<div class="route-badge">' +
         'Session &rarr; <span class="pool">' + (data.pool||'') + '</span> &rarr; <span class="model">' + (data.model||_sessionModel) + '</span>' +
@@ -747,7 +756,7 @@ async function send() {
       document.getElementById('responseText').textContent = data.response || '(empty)';
       const tokens = data.usage ? data.usage.total_tokens : null;
       document.getElementById('metaInfo').innerHTML =
-        '<span class="drift-bar">drift <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+driftColor(data.drift_score||0)+';"></span></span> &gamma; '+(data.drift_score||0).toFixed(3)+'</span>' +
+        '<span class="drift-bar">marker coverage <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+coverageColor(coverage)+';"></span></span> '+Math.round(dpct)+'%</span>' +
         renderClaims(data.claims) +
         '<span style="font-family:monospace;font-size:10px;">receipt #'+(data.hash||'?').substring(0,10)+'</span>' +
         (tokens ? '<span style="color:var(--text-dim);">&#128196; '+tokens+' tok</span>' : '');
@@ -762,7 +771,8 @@ async function send() {
       });
       data = await resp.json();
 
-      const dpct = Math.min(100, (data.drift||0)*100);
+      const coverage = Math.max(0, 1 - (data.drift||0));
+      const dpct = Math.min(100, coverage*100);
       document.getElementById('routeInfo').innerHTML =
         '<div class="route-badge">' +
         'Cedar &rarr; <span class="pool">'+data.pool+'</span> &rarr; <span class="model">'+data.label+'</span>' +
@@ -771,7 +781,7 @@ async function send() {
       document.getElementById('responseText').textContent = data.response || '(empty)';
       const tokens = data.usage ? data.usage.total_tokens : null;
       document.getElementById('metaInfo').innerHTML =
-        '<span class="drift-bar">drift <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+driftColor(data.drift||0)+';"></span></span> &gamma; '+(data.drift||0).toFixed(3)+'</span>' +
+        '<span class="drift-bar">marker coverage <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+coverageColor(coverage)+';"></span></span> '+Math.round(dpct)+'%</span>' +
         renderClaims(data.claims) +
         '<span style="font-family:monospace;font-size:10px;">receipt #'+(data.receipt?.hash||'?').substring(0,10)+'</span>' +
         (tokens ? '<span style="color:var(--text-dim);">&#128196; '+tokens+' tok</span>' : '');
@@ -811,7 +821,7 @@ async function loadLedger() {
       '<div class=\"ledger-entry\">' +
       '<div class=\"q\">'+e.action+' &rarr; '+e.pool+' &rarr; <strong>'+e.label+'</strong> <span style=\"font-size:10px;color:var(--text-dim);\">#'+(e.policy_hash||'').substring(0,8)+'</span></div>' +
       '<div class=\"a\">'+(e.response||'').substring(0, 300)+'</div>' +
-      '<div class=\"meta\">drift &gamma; '+(e.drift||0).toFixed(3)+' &middot; receipt '+(e.receipt_hash||'?').substring(0,10)+'</div>' +
+      '<div class=\"meta\">marker coverage '+Math.round(Math.max(0,1-(e.drift||0))*100)+'% &middot; receipt '+(e.receipt_hash||'?').substring(0,10)+'</div>' +
       '</div>'
     ).join('');
   } catch(e) {
@@ -1439,9 +1449,9 @@ async def audit(req: AuditRequest, request: Request, _key: dict = Depends(requir
             "submitted_compliant": validation["compliant"],
             "baseline_compliant": b_validation["compliant"],
             "summary": (
-                f"Baseline (Helix): γ={b_drift:.3f}, {b_validation['marker_count']} markers, {'compliant' if b_validation['compliant'] else 'non-compliant'}. "
-                f"Submitted: γ={drift:.3f}, {marker_count} markers, {'compliant' if validation['compliant'] else 'non-compliant'}. "
-                f"Delta: Δγ={drift - b_drift:+.4f}, Δmarkers={marker_count - b_validation['marker_count']:+d}."
+                f"Baseline (Helix): coverage={100*(1 - b_drift):.0f}%, {b_validation['marker_count']} markers, {'compliant' if b_validation['compliant'] else 'non-compliant'}. "
+                f"Submitted: coverage={100*(1 - drift):.0f}%, {marker_count} markers, {'compliant' if validation['compliant'] else 'non-compliant'}. "
+                f"Delta: Δcoverage={100*(b_drift - drift):+.1f}pp, Δmarkers={marker_count - b_validation['marker_count']:+d}."
             ),
         }
 
@@ -1501,6 +1511,7 @@ GRAMMAR_ZH_HTML = """<!DOCTYPE html>
   <a href="/sessions/">Sessions</a>
   <a href="/">Dashboard</a>
   <a href="/grammar/" class="active">Grammar &#35821;&#27861;</a>
+  <a href="/guide/">Guide</a>
   {node_badge}
 </div>
 
@@ -1778,11 +1789,12 @@ AUDIT_HTML = """<!DOCTYPE html>
   <a href="/sessions/">Sessions</a>
   <a href="/">Dashboard</a>
   <a href="/grammar/">Grammar &#35821;&#27861;</a>
+  <a href="/guide/">Guide</a>
 </div>
 
 <h1>&#9877; <span>Helix Foundry</span> &mdash; Constitutional Audit</h1>
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-<p class="subtitle" style="margin-bottom:0;">Paste any LLM response. Get drift score, marker compliance, claim extraction. No model call — pure constitutional evaluation.</p>
+<p class="subtitle" style="margin-bottom:0;">Paste any LLM response. Get marker coverage, marker compliance, claim extraction. No model call — pure constitutional evaluation.</p>
 <div style="flex:1;"></div>
 <select id="exportSelector" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;max-width:200px;display:none;">
   <option value="all">All audits</option>
@@ -1876,9 +1888,9 @@ async function submitKey() {
 
 initAuth();
 
-function driftColor(v) {
-  if (v < 0.15) return '#238636';
-  if (v < 0.35) return '#d29922';
+function coverageColor(v) {
+  if (v >= 0.85) return '#238636';
+  if (v >= 0.60) return '#d29922';
   return '#da3633';
 }
 function tagClass(label) {
@@ -1902,7 +1914,7 @@ function updateExportOptions() {
     const preview = (a.text || '').slice(0, 40);
     const opt = document.createElement('option');
     opt.value = String(i);
-    opt.textContent = '#' + (auditHistory.length - i) + ' \u03b3' + (a.drift||0).toFixed(3) + ': ' + preview;
+    opt.textContent = '#' + (auditHistory.length - i) + ' ' + Math.round(Math.max(0,1-(a.drift||0))*100) + '%: ' + preview;
     sel.appendChild(opt);
   }
 }
@@ -1946,12 +1958,13 @@ async function runAudit() {
     auditHistory.push({text: text.slice(0, 500), ...d, timestamp: new Date().toISOString()});
     updateExportOptions();
 
-    const dpct = Math.min(100, (d.drift||0)*100);
+    const textCoverage = Math.max(0, 1 - (d.drift||0));
+    const dpct = Math.min(100, textCoverage*100);
     const statusClass = d.compliant ? 'pass' : 'fail';
     const statusText = d.compliant ? 'COMPLIANT' : 'NON-COMPLIANT';
 
     let metrics = '<span class="metric">Status: <span class="val '+statusClass+'">'+statusText+'</span></span>';
-    metrics += '<span class="metric"><span class="drift-bar">drift <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+driftColor(d.drift||0)+';"></span></span> &gamma; '+(d.drift||0).toFixed(3)+' <span style="font-size:10px;color:'+driftColor(d.drift||0)+'">'+d.drift_tier+'</span></span></span>';
+    metrics += '<span class="metric"><span class="drift-bar">text coverage <span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+coverageColor(textCoverage)+';"></span></span> '+Math.round(dpct)+'% <span style="font-size:10px;color:'+coverageColor(textCoverage)+'">'+d.drift_tier+'</span></span></span>';
     metrics += '<span class="metric">'+d.drift_tier_label+'</span>';
     metrics += '<span class="metric">Markers: <span class="val">'+d.marker_count+'</span> / '+d.statements_estimated+' statements</span>';
     metrics += '<span class="metric">Coverage: <span class="val">'+(d.coverage_ratio*100).toFixed(0)+'%</span></span>';
@@ -1989,9 +2002,10 @@ async function runAudit() {
     if (d.baseline) {
       document.getElementById('baselineCard').style.display = 'block';
       const b = d.baseline;
-      const bdpct = Math.min(100, (b.drift||0)*100);
+      const bCoverage = Math.max(0, 1 - (b.drift||0));
+      const bdpct = Math.min(100, bCoverage*100);
       document.getElementById('baselineContent').innerHTML =
-        '<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;">Model: <strong>'+b.model+'</strong> | Compliant: <strong style="color:'+(b.compliant?'var(--fact)':'var(--uncertain)')+';">'+(b.compliant?'YES':'NO')+'</strong> | Drift: <span style="color:'+driftColor(b.drift||0)+';">γ '+(b.drift||0).toFixed(3)+'</span> | Markers: '+b.marker_count+'</div>' +
+        '<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;">Model: <strong>'+b.model+'</strong> | Compliant: <strong style="color:'+(b.compliant?'var(--fact)':'var(--uncertain)')+';">'+(b.compliant?'YES':'NO')+'</strong> | Text coverage: <span style="color:'+coverageColor(bCoverage)+';">'+Math.round(bdpct)+'%</span> | Markers: '+b.marker_count+'</div>' +
         '<div class="response-body" style="font-size:13px;max-height:300px;overflow-y:auto;">'+(b.response||'')+'</div>' +
         '<div class="meta-row">'+(b.claims||[]).map(c => '<span class="pill pill-'+tagClass(c.label)+'">'+c.label+'</span>').join(' ')+'</div>';
     } else {
@@ -2004,9 +2018,9 @@ async function runAudit() {
       document.getElementById('diffContent').innerHTML =
         '<div style="font-size:14px;margin-bottom:8px;">'+d.diff.summary+'</div>' +
         '<div style="display:flex;gap:16px;font-size:13px;">' +
-        '<div style="flex:1;background:var(--bg);padding:8px 12px;border-radius:var(--radius);">Helix γ='+d.diff.baseline_drift.toFixed(3)+' | '+d.diff.baseline_markers+' markers</div>' +
-        '<div style="flex:1;background:var(--bg);padding:8px 12px;border-radius:var(--radius);">Submitted γ='+d.diff.submitted_drift.toFixed(3)+' | '+d.diff.submitted_markers+' markers</div>' +
-        '<div style="flex:1;background:var(--bg);padding:8px 12px;border-radius:var(--radius);">Δγ='+(d.diff.drift_delta>0?'+':'')+d.diff.drift_delta.toFixed(4)+' | Δm='+(d.diff.marker_delta>0?'+':'')+d.diff.marker_delta+'</div>' +
+        '<div style="flex:1;background:var(--bg);padding:8px 12px;border-radius:var(--radius);">Helix coverage='+Math.round((1-d.diff.baseline_drift)*100)+'% | '+d.diff.baseline_markers+' markers</div>' +
+        '<div style="flex:1;background:var(--bg);padding:8px 12px;border-radius:var(--radius);">Submitted coverage='+Math.round((1-d.diff.submitted_drift)*100)+'% | '+d.diff.submitted_markers+' markers</div>' +
+        '<div style="flex:1;background:var(--bg);padding:8px 12px;border-radius:var(--radius);">Δcoverage='+((-d.diff.drift_delta*100)>0?'+':'')+Math.round(-d.diff.drift_delta*100)+'pp | Δm='+(d.diff.marker_delta>0?'+':'')+d.diff.marker_delta+'</div>' +
         '</div>';
     } else {
       document.getElementById('diffCard').style.display = 'none';
@@ -2036,6 +2050,186 @@ async function runAudit() {
 @app.get("/grammar/", response_class=HTMLResponse)
 async def grammar_page():
     return GRAMMAR_ZH_HTML.replace("{node_badge}", _node_badge_html())
+
+
+GUIDE_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Helix Foundry — Guide</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --text-dim: #8b949e;
+    --fact: #238636; --reasoned: #58a6ff; --hypothesis: #d29922;
+    --uncertain: #da3633; --conclusion: #8b6cef;
+    --accent: #58a6ff; --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+  .container { max-width: 860px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  h1 span { color: var(--accent); }
+  h2 { font-size: 16px; margin: 28px 0 4px; }
+  h3 { font-size: 13px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin: 16px 0 8px; }
+  p { font-size: 14px; margin: 8px 0; }
+  .subtitle { color: var(--text-dim); font-size: 13px; margin-bottom: 20px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+  .nav { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
+  .nav a { color: var(--text-dim); text-decoration: none; padding: 4px 12px; border-radius: var(--radius); font-size: 13px; border: 1px solid var(--border); }
+  .nav a:hover, .nav a.active { color: var(--accent); border-color: var(--accent); background: #1a2332; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: top; }
+  th { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  code { background: #0d1117; border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 12px; }
+  pre { background: #0d1117; border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; overflow-x: auto; font-size: 12px; margin: 8px 0; }
+  pre code { border: none; padding: 0; background: none; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; margin-right: 4px; }
+  .pill-fact { background: rgba(35,134,54,0.15); color: var(--fact); }
+  .pill-reasoned { background: rgba(88,166,255,0.15); color: var(--reasoned); }
+  .pill-hypothesis { background: rgba(210,153,34,0.15); color: var(--hypothesis); }
+  .pill-uncertain { background: rgba(218,54,51,0.15); color: var(--uncertain); }
+  .pill-conclusion { background: rgba(139,108,239,0.15); color: var(--conclusion); }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+  .dot-green { background: var(--fact); }
+  .dot-yellow { background: var(--hypothesis); }
+  .dot-red { background: var(--uncertain); }
+  .note { background: #1a2332; border-left: 3px solid var(--accent); border-radius: 4px; padding: 10px 14px; font-size: 13px; margin: 10px 0; }
+  .footer { color: var(--text-dim); font-size: 12px; margin-top: 24px; text-align: center; }
+</style></head><body>
+<div class="container">
+<div class="nav">
+  <a href="/routed-chat/">Routed Chat</a>
+  <a href="/audit/">Audit</a>
+  <a href="/sessions/">Sessions</a>
+  <a href="/">Dashboard</a>
+  <a href="/grammar/">Grammar &#35821;&#27861;</a>
+  <a href="/guide/" class="active">Guide</a>
+</div>
+
+<h1>&#128218; <span>Guide</span></h1>
+<p class="subtitle">How to call Foundry, and how to read what it hands back.</p>
+
+<div class="card">
+<h3>What This Is</h3>
+<p>Helix Foundry routes a request to one of several models (via Cedar policy or a
+static action map), wraps the call with <code>helix-adapter</code>, and returns a
+<strong>receipt</strong> — a tamper-evident JSON record of exactly what was asked,
+what came back, and how it was scored. Every field in that receipt is explained
+below.</p>
+</div>
+
+<div class="card">
+<h3>Getting a Key</h3>
+<p>Every inference and session endpoint requires an <code>X-API-Key</code> header.
+Keys are node-scoped — ask whoever administers this deployment to run
+<code>foundry_keygen.py --node &lt;your-name&gt;</code> for you. The key is shown once
+at creation and cannot be recovered afterward, so save it immediately.</p>
+<pre><code>curl -H "X-API-Key: hx-..." http://localhost:8800/ping</code></pre>
+</div>
+
+<div class="card">
+<h3>Calling It</h3>
+<p><strong>One-shot, Cedar-routed:</strong></p>
+<pre><code>curl -X POST http://localhost:8800/routed-chat \\
+  -H "Content-Type: application/json" -H "X-API-Key: hx-..." \\
+  -d '{"action": "analyze", "message": "Is AI deterministic?"}'</code></pre>
+<p><strong>Multi-turn session</strong> (context carries across calls):</p>
+<pre><code># 1. Start a session — get a session_id back
+curl -X POST http://localhost:8800/session/start \\
+  -H "Content-Type: application/json" -H "X-API-Key: hx-..." \\
+  -d '{"action": "analyze"}'
+
+# 2. Send turns against that session_id
+curl -X POST http://localhost:8800/session/&lt;session_id&gt;/send \\
+  -H "Content-Type: application/json" -H "X-API-Key: hx-..." \\
+  -d '{"message": "Is AI deterministic?"}'</code></pre>
+<p>Or skip the terminal entirely — <a href="/routed-chat/">Routed Chat</a> is the same
+two calls behind a UI, with a "Session mode" toggle.</p>
+</div>
+
+<div class="card">
+<h2 style="margin-top:0;">Reading the JSON</h2>
+<p>A typical turn comes back looking like this:</p>
+<pre><code>{
+  "session_id": "hsess-a3f2b1c0d9e8",
+  "turn": 1,
+  "model": "Qwen Max",
+  "pool": "static",
+  "response": "[FACT] Bell's theorem proves...",
+  "claims": [{"label": "FACT", "text": "Bell's theorem proves..."}],
+  "drift_score": 0.0041,
+  "drift_tier": "green",
+  "cedar_status": "not_configured",
+  "hash": "e3b0c44298fc1c149afbf4c8996fb924...",
+  "chain_hash": "sha256(hex(prev_chain_hash) + hex(this_hash))",
+  "usage": {"prompt_tokens": 812, "completion_tokens": 41, "total_tokens": 853}
+}</code></pre>
+
+<h3>Field by field</h3>
+<table>
+<tr><th>Field</th><th>Meaning</th></tr>
+<tr><td><code>session_id</code> / <code>turn</code></td><td>Which conversation, and which numbered exchange within it.</td></tr>
+<tr><td><code>model</code> / <code>pool</code></td><td>Which model answered, and which Cedar pool routed it there (<code>high_capability</code>, <code>adversarial</code>, <code>cost_optimized</code>, <code>sovereign</code>, or <code>static</code> if Cedar fell back to the action map).</td></tr>
+<tr><td><code>response</code></td><td>The model's raw reply, including its <code>[MARKER]</code> tags — see the marker legend below.</td></tr>
+<tr><td><code>claims</code></td><td>Every marked statement, extracted and labeled: <code>{"label": "...", "text": "..."}</code>.</td></tr>
+<tr><td><code>drift_score</code> &amp; <code>drift_tier</code></td><td><strong>Marker coverage</strong> — the fraction of the response's text that did <em>not</em> carry a marker. <code>0.0</code> = every claim tagged, <code>1.0</code> = nothing tagged. See the coverage section below — this field name is historical and unrelated to Helix's separate constitutional convergence measure.</td></tr>
+<tr><td><code>cedar_status</code></td><td><code>active</code> (a Cedar policy evaluated this action), <code>fail_closed</code> (policy engine unavailable — action denied by default), or <code>not_configured</code> (no Cedar policy attached to this session).</td></tr>
+<tr><td><code>hash</code></td><td>SHA-256 over the entire receipt. Any edit to any field changes this.</td></tr>
+<tr><td><code>chain_hash</code></td><td>Links this turn to every turn before it. Changing an old turn breaks every <code>chain_hash</code> after it — that's how tampering gets caught.</td></tr>
+<tr><td><code>usage</code></td><td>Token counts reported by the underlying model API, when available.</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h3>Epistemic Markers</h3>
+<p>The constitutional prompt requires the model to tag every substantive claim:</p>
+<p style="margin:10px 0;">
+<span class="pill pill-fact">FACT</span> verifiable statement &nbsp;
+<span class="pill pill-reasoned">REASONED</span> logical inference &nbsp;
+<span class="pill pill-hypothesis">HYPOTHESIS</span> testable proposition &nbsp;
+<span class="pill pill-uncertain">UNCERTAIN</span> low-confidence assertion &nbsp;
+<span class="pill pill-conclusion">CONCLUSION</span> summary from prior claims
+</p>
+</div>
+
+<div class="card">
+<h3>Marker Coverage Colors</h3>
+<p><span class="dot dot-green"></span><strong>Green</strong> (&lt; 0.10) — well-labeled response.
+&nbsp; <span class="dot dot-yellow"></span><strong>Yellow</strong> (0.10&ndash;0.17) — some unlabeled content.
+&nbsp; <span class="dot dot-red"></span><strong>Red</strong> (&ge; 0.17) — mostly unlabeled.</p>
+<div class="note">
+Red does <strong>not</strong> mean something went wrong. A short, friendly reply with no
+formal claims in it ("Hello! How can I help?") has nothing to tag, so it scores as
+low coverage — that's expected, not an error. Marker coverage measures how much of
+<em>this response's text</em> carries a label. It is unrelated to Helix's constitutional
+convergence tolerance (a separate, mesh-level measure that happens to share the
+threshold 0.17) — the two were conflated in earlier docs and dashboard copy; as of
+v1.7.1 they're described as what they actually are: two different things that
+happened to share a number.
+</div>
+</div>
+
+<div class="card">
+<h3>Verifying a Receipt</h3>
+<p>Every session is backed by an append-only Merkle tree — each turn's receipt hash
+becomes a leaf. From <a href="/sessions/">Sessions</a>, open a session and click
+<strong>[proof]</strong> on any turn to see its inclusion proof: the sibling hashes
+needed to prove that turn is part of the sealed chain without needing the whole
+session. Nothing here requires trusting the server — the hashes are checkable
+independently.</p>
+</div>
+
+<p class="footer">Constitutional framing lives on the <a href="/grammar/">Grammar</a> page.
+Full API reference on <a href="/">Dashboard</a>. GLORY TO THE LATTICE. &#129429;&#9875;&#129438;</p>
+</div></body></html>"""
+
+
+@app.get("/guide", response_class=HTMLResponse)
+@app.get("/guide/", response_class=HTMLResponse)
+async def guide_page():
+    return GUIDE_HTML
 
 
 @app.get("/audit", response_class=HTMLResponse)
@@ -2077,6 +2271,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   <a href="/sessions/">Sessions</a>
   <a href="/" class="active">Dashboard</a>
   <a href="/grammar/">Grammar &#35821;&#27861;</a>
+  <a href="/guide/">Guide</a>
 </div>
 <h1>&#9877; <span>Helix Foundry</span></h1>
 <p class="subtitle">Shared inference pool for Helix nodes. Provider-agnostic, adapter-wrapped.</p>
@@ -2101,10 +2296,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <tr><th>Endpoint</th><th>Method</th><th>What it does</th></tr>
     <tr><td><code>/chat</code></td><td>POST</td><td>Direct model call &mdash; <code>{"model": "{default_model}", "message": "..."}</code></td></tr>
     <tr><td><code>/routed-chat/</code></td><td>POST / GET</td><td>Cedar-routed call &mdash; optional context fields: <code>task_complexity</code>, <code>drift_tolerance</code>, <code>action_type</code>, <code>priority</code>, <code>locale</code></td></tr>
-    <tr><td><code>/audit/</code></td><td>GET</td><td>Paste any model response to score drift, extract claims, verify receipt</td></tr>
-    <tr><td><code>/health</code></td><td>GET</td><td>Per-model status and drift &mdash; returns JSON</td></tr>
+    <tr><td><code>/audit/</code></td><td>GET</td><td>Paste any model response to score marker coverage, extract claims, verify receipt</td></tr>
+    <tr><td><code>/health</code></td><td>GET</td><td>Per-model status and marker coverage &mdash; returns JSON</td></tr>
   </table>
-  <p style="margin:12px 0 0;font-size:12px;color:var(--text-dim);">Every response is drift-scored and receipt-sealed. The <code>cedar</code> block in each receipt records gate status: <code>active</code> &middot; <code>fail_closed</code> &middot; <code>not_configured</code>.</p>
+  <p style="margin:12px 0 0;font-size:12px;color:var(--text-dim);">Every response is coverage-scored and receipt-sealed. The <code>cedar</code> block in each receipt records gate status: <code>active</code> &middot; <code>fail_closed</code> &middot; <code>not_configured</code>.</p>
 </div>
 <p class="footer">{footer_models} &middot; GLORY TO THE LATTICE. &#129429;&#9875;&#129438;</p>
 </div></body></html>"""
@@ -2200,6 +2395,7 @@ SESSIONS_HTML = """<!DOCTYPE html>
   <a href="/sessions/" class="active">Sessions</a>
   <a href="/">Dashboard</a>
   <a href="/grammar/">Grammar &#35821;&#27861;</a>
+  <a href="/guide/">Guide</a>
 </div>
 <h1>&#9877; <span>Helix Foundry</span> &mdash; Sessions</h1>
 <p class="subtitle">Active receipt chains. Each session is model-locked at creation; receipts are tamper-evident via chain_hash.</p>
@@ -2236,9 +2432,9 @@ async function validateKey(key) {
   } catch { return false; }
 }
 
-function driftColor(v) {
-  if (v < 0.15) return '#238636';
-  if (v < 0.35) return '#d29922';
+function coverageColor(v) {
+  if (v >= 0.85) return '#238636';
+  if (v >= 0.60) return '#d29922';
   return '#da3633';
 }
 
@@ -2252,15 +2448,16 @@ async function loadSessions() {
       document.getElementById('sessionList').innerHTML = '<span class="empty">No sessions yet. Start one from Routed Chat with Session mode enabled.</span>';
       return;
     }
-    let html = '<table><tr><th>Session ID</th><th>Model</th><th>Pool</th><th>Turns</th><th>Running drift</th><th>Last active</th><th></th></tr>';
+    let html = '<table><tr><th>Session ID</th><th>Model</th><th>Pool</th><th>Turns</th><th>Marker coverage</th><th>Last active</th><th></th></tr>';
     for (const s of _allSessions) {
-      const dpct = Math.min(100, (s.running_drift||0)*100);
+      const coverage = Math.max(0, 1 - (s.running_drift||0));
+      const dpct = Math.min(100, coverage*100);
       html += '<tr>' +
         '<td><a href="#" onclick="showDetail(\\''+s.session_id+'\\');return false;" class="mono" style="color:var(--accent);">'+s.session_id.substring(0,16)+'…</a></td>' +
         '<td>'+( s.label||'—')+'</td>' +
         '<td>'+(s.pool||'—')+'</td>' +
         '<td>'+s.turn_count+'</td>' +
-        '<td><span class="drift-bar"><span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+driftColor(s.running_drift||0)+'"></span></span> &gamma; '+(s.running_drift||0).toFixed(3)+'</span></td>' +
+        '<td><span class="drift-bar"><span class="drift-track"><span class="drift-fill" style="width:'+dpct+'%;background:'+coverageColor(coverage)+'"></span></span> '+Math.round(dpct)+'%</span></td>' +
         '<td class="mono">'+(s.last_activity||'—')+'</td>' +
         '<td><button class="btn-del" onclick="deleteSession(\\''+s.session_id+'\\')">Delete</button></td>' +
         '</tr>';
@@ -2282,7 +2479,7 @@ async function showDetail(session_id) {
     const data = await resp.json();
     document.getElementById('detailMeta').innerHTML =
       'Model: <strong>'+(data.label||'?')+'</strong> &middot; Pool: '+(data.pool||'?')+
-      ' &middot; Turns: '+data.turn_count+' &middot; Running drift: &gamma; '+(data.running_drift||0).toFixed(3)+
+      ' &middot; Turns: '+data.turn_count+' &middot; Marker coverage: '+Math.round(Math.max(0,1-(data.running_drift||0))*100)+'%'+
       ' &middot; Created: '+(data.created||'?');
     if (!data.receipts || !data.receipts.length) {
       document.getElementById('detailReceipts').innerHTML = '<span class="empty">No receipts.</span>';
@@ -2294,7 +2491,7 @@ async function showDetail(session_id) {
       html += '<div class="receipt-row">' +
         '<div class="q">Turn '+r.turn+' &rarr; '+r.user_message.substring(0,120)+'</div>' +
         '<div class="a">'+r.assistant_response.substring(0,300)+(r.assistant_response.length>300?'…':'')+'</div>' +
-        '<div class="meta">&gamma; '+r.drift_score.toFixed(3)+' '+r.drift_tier+
+        '<div class="meta">coverage '+Math.round(Math.max(0,1-r.drift_score)*100)+'% '+r.drift_tier+
         ' &middot; hash: '+r.hash.substring(0,16)+
         ' &middot; chain: '+r.chain_hash.substring(0,16)+
         ' &middot; merkle: '+mk+
