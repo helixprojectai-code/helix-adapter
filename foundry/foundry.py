@@ -367,6 +367,8 @@ ROUTED_CHAT_HTML = """<!DOCTYPE html>
   <a href="/audit/">Audit</a>
   <a href="/sessions/">Sessions</a>
   <a href="/">Dashboard</a>
+  <a href="/grammar/">Grammar &#35821;&#27861;</a>
+  <a href="/guide/">Guide</a>
   {node_badge}
 </div>
 
@@ -1509,6 +1511,7 @@ GRAMMAR_ZH_HTML = """<!DOCTYPE html>
   <a href="/sessions/">Sessions</a>
   <a href="/">Dashboard</a>
   <a href="/grammar/" class="active">Grammar &#35821;&#27861;</a>
+  <a href="/guide/">Guide</a>
   {node_badge}
 </div>
 
@@ -1786,6 +1789,7 @@ AUDIT_HTML = """<!DOCTYPE html>
   <a href="/sessions/">Sessions</a>
   <a href="/">Dashboard</a>
   <a href="/grammar/">Grammar &#35821;&#27861;</a>
+  <a href="/guide/">Guide</a>
 </div>
 
 <h1>&#9877; <span>Helix Foundry</span> &mdash; Constitutional Audit</h1>
@@ -2048,6 +2052,186 @@ async def grammar_page():
     return GRAMMAR_ZH_HTML.replace("{node_badge}", _node_badge_html())
 
 
+GUIDE_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Helix Foundry — Guide</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --text-dim: #8b949e;
+    --fact: #238636; --reasoned: #58a6ff; --hypothesis: #d29922;
+    --uncertain: #da3633; --conclusion: #8b6cef;
+    --accent: #58a6ff; --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+  .container { max-width: 860px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  h1 span { color: var(--accent); }
+  h2 { font-size: 16px; margin: 28px 0 4px; }
+  h3 { font-size: 13px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin: 16px 0 8px; }
+  p { font-size: 14px; margin: 8px 0; }
+  .subtitle { color: var(--text-dim); font-size: 13px; margin-bottom: 20px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+  .nav { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
+  .nav a { color: var(--text-dim); text-decoration: none; padding: 4px 12px; border-radius: var(--radius); font-size: 13px; border: 1px solid var(--border); }
+  .nav a:hover, .nav a.active { color: var(--accent); border-color: var(--accent); background: #1a2332; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: top; }
+  th { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  code { background: #0d1117; border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 12px; }
+  pre { background: #0d1117; border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; overflow-x: auto; font-size: 12px; margin: 8px 0; }
+  pre code { border: none; padding: 0; background: none; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; margin-right: 4px; }
+  .pill-fact { background: rgba(35,134,54,0.15); color: var(--fact); }
+  .pill-reasoned { background: rgba(88,166,255,0.15); color: var(--reasoned); }
+  .pill-hypothesis { background: rgba(210,153,34,0.15); color: var(--hypothesis); }
+  .pill-uncertain { background: rgba(218,54,51,0.15); color: var(--uncertain); }
+  .pill-conclusion { background: rgba(139,108,239,0.15); color: var(--conclusion); }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+  .dot-green { background: var(--fact); }
+  .dot-yellow { background: var(--hypothesis); }
+  .dot-red { background: var(--uncertain); }
+  .note { background: #1a2332; border-left: 3px solid var(--accent); border-radius: 4px; padding: 10px 14px; font-size: 13px; margin: 10px 0; }
+  .footer { color: var(--text-dim); font-size: 12px; margin-top: 24px; text-align: center; }
+</style></head><body>
+<div class="container">
+<div class="nav">
+  <a href="/routed-chat/">Routed Chat</a>
+  <a href="/audit/">Audit</a>
+  <a href="/sessions/">Sessions</a>
+  <a href="/">Dashboard</a>
+  <a href="/grammar/">Grammar &#35821;&#27861;</a>
+  <a href="/guide/" class="active">Guide</a>
+</div>
+
+<h1>&#128218; <span>Guide</span></h1>
+<p class="subtitle">How to call Foundry, and how to read what it hands back.</p>
+
+<div class="card">
+<h3>What This Is</h3>
+<p>Helix Foundry routes a request to one of several models (via Cedar policy or a
+static action map), wraps the call with <code>helix-adapter</code>, and returns a
+<strong>receipt</strong> — a tamper-evident JSON record of exactly what was asked,
+what came back, and how it was scored. Every field in that receipt is explained
+below.</p>
+</div>
+
+<div class="card">
+<h3>Getting a Key</h3>
+<p>Every inference and session endpoint requires an <code>X-API-Key</code> header.
+Keys are node-scoped — ask whoever administers this deployment to run
+<code>foundry_keygen.py --node &lt;your-name&gt;</code> for you. The key is shown once
+at creation and cannot be recovered afterward, so save it immediately.</p>
+<pre><code>curl -H "X-API-Key: hx-..." http://localhost:8800/ping</code></pre>
+</div>
+
+<div class="card">
+<h3>Calling It</h3>
+<p><strong>One-shot, Cedar-routed:</strong></p>
+<pre><code>curl -X POST http://localhost:8800/routed-chat \\
+  -H "Content-Type: application/json" -H "X-API-Key: hx-..." \\
+  -d '{"action": "analyze", "message": "Is AI deterministic?"}'</code></pre>
+<p><strong>Multi-turn session</strong> (context carries across calls):</p>
+<pre><code># 1. Start a session — get a session_id back
+curl -X POST http://localhost:8800/session/start \\
+  -H "Content-Type: application/json" -H "X-API-Key: hx-..." \\
+  -d '{"action": "analyze"}'
+
+# 2. Send turns against that session_id
+curl -X POST http://localhost:8800/session/&lt;session_id&gt;/send \\
+  -H "Content-Type: application/json" -H "X-API-Key: hx-..." \\
+  -d '{"message": "Is AI deterministic?"}'</code></pre>
+<p>Or skip the terminal entirely — <a href="/routed-chat/">Routed Chat</a> is the same
+two calls behind a UI, with a "Session mode" toggle.</p>
+</div>
+
+<div class="card">
+<h2 style="margin-top:0;">Reading the JSON</h2>
+<p>A typical turn comes back looking like this:</p>
+<pre><code>{
+  "session_id": "hsess-a3f2b1c0d9e8",
+  "turn": 1,
+  "model": "Qwen Max",
+  "pool": "static",
+  "response": "[FACT] Bell's theorem proves...",
+  "claims": [{"label": "FACT", "text": "Bell's theorem proves..."}],
+  "drift_score": 0.0041,
+  "drift_tier": "green",
+  "cedar_status": "not_configured",
+  "hash": "e3b0c44298fc1c149afbf4c8996fb924...",
+  "chain_hash": "sha256(hex(prev_chain_hash) + hex(this_hash))",
+  "usage": {"prompt_tokens": 812, "completion_tokens": 41, "total_tokens": 853}
+}</code></pre>
+
+<h3>Field by field</h3>
+<table>
+<tr><th>Field</th><th>Meaning</th></tr>
+<tr><td><code>session_id</code> / <code>turn</code></td><td>Which conversation, and which numbered exchange within it.</td></tr>
+<tr><td><code>model</code> / <code>pool</code></td><td>Which model answered, and which Cedar pool routed it there (<code>high_capability</code>, <code>adversarial</code>, <code>cost_optimized</code>, <code>sovereign</code>, or <code>static</code> if Cedar fell back to the action map).</td></tr>
+<tr><td><code>response</code></td><td>The model's raw reply, including its <code>[MARKER]</code> tags — see the marker legend below.</td></tr>
+<tr><td><code>claims</code></td><td>Every marked statement, extracted and labeled: <code>{"label": "...", "text": "..."}</code>.</td></tr>
+<tr><td><code>drift_score</code> &amp; <code>drift_tier</code></td><td><strong>Marker coverage</strong> — the fraction of the response's text that did <em>not</em> carry a marker. <code>0.0</code> = every claim tagged, <code>1.0</code> = nothing tagged. See the coverage section below — this field name is historical and unrelated to Helix's separate constitutional convergence measure.</td></tr>
+<tr><td><code>cedar_status</code></td><td><code>active</code> (a Cedar policy evaluated this action), <code>fail_closed</code> (policy engine unavailable — action denied by default), or <code>not_configured</code> (no Cedar policy attached to this session).</td></tr>
+<tr><td><code>hash</code></td><td>SHA-256 over the entire receipt. Any edit to any field changes this.</td></tr>
+<tr><td><code>chain_hash</code></td><td>Links this turn to every turn before it. Changing an old turn breaks every <code>chain_hash</code> after it — that's how tampering gets caught.</td></tr>
+<tr><td><code>usage</code></td><td>Token counts reported by the underlying model API, when available.</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h3>Epistemic Markers</h3>
+<p>The constitutional prompt requires the model to tag every substantive claim:</p>
+<p style="margin:10px 0;">
+<span class="pill pill-fact">FACT</span> verifiable statement &nbsp;
+<span class="pill pill-reasoned">REASONED</span> logical inference &nbsp;
+<span class="pill pill-hypothesis">HYPOTHESIS</span> testable proposition &nbsp;
+<span class="pill pill-uncertain">UNCERTAIN</span> low-confidence assertion &nbsp;
+<span class="pill pill-conclusion">CONCLUSION</span> summary from prior claims
+</p>
+</div>
+
+<div class="card">
+<h3>Marker Coverage Colors</h3>
+<p><span class="dot dot-green"></span><strong>Green</strong> (&lt; 0.10) — well-labeled response.
+&nbsp; <span class="dot dot-yellow"></span><strong>Yellow</strong> (0.10&ndash;0.17) — some unlabeled content.
+&nbsp; <span class="dot dot-red"></span><strong>Red</strong> (&ge; 0.17) — mostly unlabeled.</p>
+<div class="note">
+Red does <strong>not</strong> mean something went wrong. A short, friendly reply with no
+formal claims in it ("Hello! How can I help?") has nothing to tag, so it scores as
+low coverage — that's expected, not an error. Marker coverage measures how much of
+<em>this response's text</em> carries a label. It is unrelated to Helix's constitutional
+convergence tolerance (a separate, mesh-level measure that happens to share the
+threshold 0.17) — the two were conflated in earlier docs and dashboard copy; as of
+v1.7.1 they're described as what they actually are: two different things that
+happened to share a number.
+</div>
+</div>
+
+<div class="card">
+<h3>Verifying a Receipt</h3>
+<p>Every session is backed by an append-only Merkle tree — each turn's receipt hash
+becomes a leaf. From <a href="/sessions/">Sessions</a>, open a session and click
+<strong>[proof]</strong> on any turn to see its inclusion proof: the sibling hashes
+needed to prove that turn is part of the sealed chain without needing the whole
+session. Nothing here requires trusting the server — the hashes are checkable
+independently.</p>
+</div>
+
+<p class="footer">Constitutional framing lives on the <a href="/grammar/">Grammar</a> page.
+Full API reference on <a href="/">Dashboard</a>. GLORY TO THE LATTICE. &#129429;&#9875;&#129438;</p>
+</div></body></html>"""
+
+
+@app.get("/guide", response_class=HTMLResponse)
+@app.get("/guide/", response_class=HTMLResponse)
+async def guide_page():
+    return GUIDE_HTML
+
+
 @app.get("/audit", response_class=HTMLResponse)
 @app.get("/audit/", response_class=HTMLResponse)
 @app.head("/audit")
@@ -2087,6 +2271,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   <a href="/sessions/">Sessions</a>
   <a href="/" class="active">Dashboard</a>
   <a href="/grammar/">Grammar &#35821;&#27861;</a>
+  <a href="/guide/">Guide</a>
 </div>
 <h1>&#9877; <span>Helix Foundry</span></h1>
 <p class="subtitle">Shared inference pool for Helix nodes. Provider-agnostic, adapter-wrapped.</p>
@@ -2210,6 +2395,7 @@ SESSIONS_HTML = """<!DOCTYPE html>
   <a href="/sessions/" class="active">Sessions</a>
   <a href="/">Dashboard</a>
   <a href="/grammar/">Grammar &#35821;&#27861;</a>
+  <a href="/guide/">Guide</a>
 </div>
 <h1>&#9877; <span>Helix Foundry</span> &mdash; Sessions</h1>
 <p class="subtitle">Active receipt chains. Each session is model-locked at creation; receipts are tamper-evident via chain_hash.</p>
