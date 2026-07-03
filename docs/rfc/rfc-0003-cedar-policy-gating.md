@@ -11,7 +11,7 @@ This RFC extends the Helix Adapter to support full execution containment by inte
 
 The architecture introduces two synchronized gates:
 
-- **Duck Gate** (response): Epistemic markers, drift scoring (γ), and receipt generation on model output.
+- **Duck Gate** (response): Epistemic markers, marker-coverage scoring (`drift_score`), and receipt generation on model output.
 - **Cedar Gate** (action): Policy evaluation on tool use, shell commands, API calls, and system primitives before execution.
 
 This creates a unified policy surface where constitutional grammar and runtime enforcement share the same formal foundation.
@@ -26,7 +26,7 @@ By using Cedar for deterministic policy evaluation on both responses and actions
 
 | Layer              | Flow |
 |--------------------|------|
-| **Output Path**    | Model (Stochastic) → Duck Gate (drift + markers + receipts) → User |
+| **Output Path**    | Model (Stochastic) → Duck Gate (marker coverage + markers + receipts) → User |
 | **Policy Enforcement** | Controlled by Cedar Gate (Response + Action) |
 | **Execution Path** | Agent (Tool Use) → Cedar Gate → System (Shell, API, etc.) |
 

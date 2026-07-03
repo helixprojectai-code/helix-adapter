@@ -12,7 +12,7 @@ https://www.linkedin.com/in/stephen-hope-75497937a
 Include:
 - A description of the attack vector
 - Steps to reproduce
-- Affected component (prompt, markers, drift, receipt, API)
+- Affected component (prompt, markers, marker coverage, receipt, API)
 - Suggested fix (if you have one)
 
 We will respond within 48 hours and coordinate a fix. You will be credited publicly unless you request otherwise.
@@ -22,7 +22,7 @@ We will respond within 48 hours and coordinate a fix. You will be credited publi
 This policy covers:
 
 - **Constitutional bypass** — any method that causes the adapter to drop or circumvent epistemic markers
-- **Drift evasion** — any method that causes the adapter to report incorrect drift scores
+- **Marker-coverage evasion** — any method that causes the adapter to report an incorrect `drift_score`
 - **Receipt tampering** — any method that breaks or falsifies the cryptographic receipt chain
 - **Authority spoofing** — any method that convinces the adapter to accept inline constitutional amendments
 - **API exploitation** — any vulnerability in the FastAPI reference server or Foundry

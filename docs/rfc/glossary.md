@@ -5,7 +5,7 @@ This glossary defines key terms used in the Helix Adapter's Cedar Policy Gating 
 ## Core Concepts
 
 **Duck Gate**  
-The response-level governance layer. Responsible for enforcing epistemic markers (`[FACT]`, `[REASONED]`, etc.), calculating drift score (γ), validating receipts, and ensuring output integrity before a response is returned to the user.
+The response-level governance layer. Responsible for enforcing epistemic markers (`[FACT]`, `[REASONED]`, etc.), calculating marker coverage (the `drift_score` field), validating receipts, and ensuring output integrity before a response is returned to the user.
 
 **Cedar Gate**  
 The action-level governance layer powered by CNCF Cedar. Evaluates whether an agent is allowed to perform a specific action (tool use, shell command, API call, etc.) based on declarative policies.
@@ -16,8 +16,8 @@ The combined system of Duck Gate (response governance) + Cedar Gate (action gove
 **Fail-Closed**  
 The default security posture: if Cedar cannot evaluate a request (missing policy, error, or unavailable), the action is denied. This is the opposite of fail-open behavior.
 
-**Drift Score (γ)**  
-A real-time metric produced by the Duck Gate that quantifies how much the model's output has drifted from expected behavior or grounding. Passed into Cedar context for policy decisions.
+**Marker Coverage (`drift_score` field)**  
+A real-time metric produced by the Duck Gate: the fraction of a response's text that lacks a proper epistemic marker (`0.0` = fully labeled, `1.0` = no markers at all). Passed into Cedar context as `drift_score` for policy decisions. The field is still named `drift_score`/`drift_tier` in code and receipts for API stability, but "drift" here is a narrow, text-labeling-completeness signal — it is **not** the same measure as the constitutional convergence tolerance (γ = 0.17, Policy 007) used elsewhere in Helix's mesh governance, nor the same as RFC 0002's proposed attention-entropy metric. All three happened to share the name and a similar threshold value; they are unrelated calculations over unrelated inputs. See RFC 0002 §2 for the disambiguation.
 
 **Epistemic Markers**  
 Structured labels such as `[FACT]`, `[HYPOTHESIS]`, `[ASSUMPTION]`, and `[SUBVERSION_RISK]` that the Duck Gate requires models to use. These help both humans and downstream systems understand the confidence level of statements.

@@ -35,6 +35,19 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   happened to share the word. No API/schema changes: `drift_score`,
   `drift_tier`, `drift_tolerance`, and `DriftThreshold` are unchanged.
 
+- **Docs: carried the same disambiguation through `THEORY.md`, `ARCHITECTURE.md`,
+  `README.md`, `QUICKSTART.md`, `foundry/README.md`, `SECURITY.md`,
+  `CONTRIBUTING.md`, `examples/README.md`, and both Cedar RFCs.** Turned up two
+  more collisions on top of the Foundry dashboard's: `THEORY.md` formally
+  claimed Duck Gate computes "the γ-drift score" as a direct implementation of
+  the theoretical $\delta$ in the Helix Stability Function — reworded to a
+  proxy relationship, not an identity. RFC 0002 (draft, unshipped) proposed a
+  *third*, mathematically unrelated attention-entropy metric that also
+  claimed the name γ and the same 0.10/0.17 thresholds — renamed to κ
+  ("attention dispersion") throughout. `drift_score`/`drift_tier`/
+  `DriftThreshold`/`compute_drift()` are still unchanged; only prose,
+  symbols, and RFC 0002's proposed (not-yet-shipped) metric name changed.
+
 ---
 
 ## [1.7.0] — 2026-07-02

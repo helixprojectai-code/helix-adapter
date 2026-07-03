@@ -3,7 +3,7 @@
 Shared multi-model inference pool for Helix nodes. Provider-agnostic — swap
 between Azure, Qwen, or any OpenAI-compatible backend via one env var.
 Cedar-driven routing with static action-map fallback. Every response
-drift-scored and receipt-sealed.
+coverage-scored and receipt-sealed.
 
 ## Deployment Config
 
@@ -24,7 +24,7 @@ Pool assignments (pool → model) are deployment-defined. Typical layout:
 
 | Pool | Trigger |
 |---|---|
-| `high_capability` | complexity ≥ 8, tight drift |
+| `high_capability` | complexity ≥ 8, tight routing tolerance |
 | `adversarial` | bash / execute / api_call |
 | `cost_optimized` | write_file / summarize / batch |
 | `sovereign` | locale / long-doc / regulatory |
@@ -57,9 +57,9 @@ used plaintext storage; the new hash lookup will reject them.
 | GET | `/ledger` | Required | Recent inference entries for calling node (?limit=N) |
 | POST | `/chat` | Required | Direct model call — `{"model": "...", "message": "..."}` |
 | POST | `/routed-chat` | Required | Action-context routing — `{"action": "...", "message": "..."}` |
-| GET | `/routed-chat` | Key gate | Interactive web UI — action selector, drift display, export |
+| GET | `/routed-chat` | Key gate | Interactive web UI — action selector, marker-coverage display, export |
 | POST | `/audit` | — | Constitutional scoring — `{"text": "..."}` |
-| GET | `/audit` | — | Web UI — paste any LLM response, get drift + compliance score |
+| GET | `/audit` | — | Web UI — paste any LLM response, get marker coverage + compliance score |
 | GET | `/sessions` | Required | List sessions for calling node |
 | POST | `/session/start` | Required | Start a Cedar-routed session |
 | POST | `/session/{id}/send` | Required | Send a turn in a session |

@@ -157,8 +157,8 @@ def resume_session(session_id: str):
     sessions[s.id] = s
     return {"session_id": s.id, "turn": s.turn}
 
-@app.get("/session/{session_id}/drift")
-def session_drift(session_id: str):
+@app.get("/session/{session_id}/coverage")
+def session_coverage(session_id: str):
     s = sessions.get(session_id)
     if not s:
         raise HTTPException(404, "Session not found")
@@ -291,8 +291,8 @@ Every `session.send()` call returns a `JointReceipt`:
 | `user_message` | str | Original user input |
 | `assistant_response` | str | Full model response |
 | `claims` | list | Extracted `[MARKER] text` pairs |
-| `drift_score` | float | 0.0 = fully labeled, 1.0 = no markers |
-| `drift_tier` | str | `green` / `yellow` / `red` |
+| `drift_score` | float | Marker coverage: 0.0 = fully labeled, 1.0 = no markers. Field name is historical — see ARCHITECTURE.md §naming note. |
+| `drift_tier` | str | `green` / `yellow` / `red` — tier of `drift_score` above |
 | `cedar_status` | str | `active` / `fail_closed` / `not_configured` |
 | `hash` | str | SHA-256 over all receipt fields |
 | `chain_hash` | str | SHA-256 of `hex(prev_chain_hash) + hex(this_hash)` — hex string concatenation |
