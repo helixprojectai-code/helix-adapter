@@ -246,12 +246,18 @@ def build_session(model_name: str, session_id: str | None = None) -> tuple["Heli
         return resp.choices[0].message.content
 
     label = cfg["label"]
-    if session_id:
+    if session_id and FOUNDRY_STORE.get_session(session_id):
         session = HelixSession.resume(
             session_id,
             model_fn=fn,
             model_name=label,
             store=FOUNDRY_STORE,
+        )
+    elif session_id:
+        # Session was registered via /session/start but has no turns yet —
+        # build fresh under the pre-assigned id rather than resuming.
+        session = HelixSession(
+            model_fn=fn, model_name=label, store=FOUNDRY_STORE, session_id=session_id
         )
     else:
         session = HelixSession(model_fn=fn, model_name=label, store=FOUNDRY_STORE)
