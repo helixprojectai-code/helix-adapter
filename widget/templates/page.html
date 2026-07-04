@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Helix Constitutional Chat — labeled AI with cryptographic receipts</title>
-<meta name="description" content="Every claim labeled [FACT] [REASONED] [HYPOTHESIS] [UNCERTAIN] [CONCLUSION]. No agency claims. Cryptographic receipts. Drift detection. Powered by the Helix constitutional grammar.">
+<meta name="description" content="Every claim labeled [FACT] [REASONED] [HYPOTHESIS] [UNCERTAIN] [CONCLUSION]. No agency claims. Cryptographic receipts. Marker-coverage scoring. Powered by the Helix constitutional grammar.">
 <style>
   :root {
     --bg: #0d1117; --surface: #161b22; --border: #30363d;
@@ -71,8 +71,8 @@
 <p class="subtitle">
   compute: <strong>deepseek-chat</strong> ·
   <span class="drift-bar">
-    drift <span class="drift-track"><span class="drift-fill" style="width:{{DRIFT_PCT}}%;background:{{DRIFT_COLOR}};"></span></span>
-    γ {{DRIFT_VALUE}}
+    marker coverage <span class="drift-track"><span class="drift-fill" style="width:{{DRIFT_PCT}}%;background:{{DRIFT_COLOR}};"></span></span>
+    {{DRIFT_VALUE}}
   </span> ·
   <span id="receiptCount">{{RECEIPT_COUNT}} receipts on server</span>
   <span id="compareStatus" style="display:none;font-size:12px;color:var(--accent);margin-left:12px;"></span>
@@ -342,10 +342,10 @@
               col.appendChild(meta);
             }
 
-            // Drift label
+            // Marker coverage label
             const dl = document.createElement('div');
             dl.style.cssText = 'font-size:11px;color:var(--text-dim);margin-top:4px;';
-            dl.textContent = '\u03b3 ' + r.drift.toFixed(3);
+            dl.textContent = 'coverage ' + r.drift.toFixed(3);
             col.appendChild(dl);
 
             wrapper.appendChild(col);

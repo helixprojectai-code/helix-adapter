@@ -606,12 +606,12 @@ async def serve_page():
             conv_html += f"""<div class="exchange">
     <div class="user-q">You: {_esc(user_msg)}</div>
     <div class="ai-r">{_esc(resp)}</div>
-    <div class="meta">{_esc(model)} · {claim_pills} · γ {drift:.3f} · <code>{_esc(h)}…</code></div>
+    <div class="meta">{_esc(model)} · {claim_pills} · marker coverage {drift:.3f} · <code>{_esc(h)}…</code></div>
 </div>"""
     else:
         conv_html = '<p style="color:var(--text-dim)">No conversations yet.</p>'
 
-    # Drift gauge color
+    # Marker coverage gauge color
     drift = adapter.running_drift()
     if drift < 0.10:
         drift_color = "var(--fact)"

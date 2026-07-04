@@ -1164,12 +1164,7 @@ async def session_send(
     _check_rate_limit(request)
     if not req.message.strip():
         raise HTTPException(400, "message empty")
-    meta = SESSION_META.get(session_id)
-    if meta is not None:
-        # Enforce ownership when we have metadata to check against.
-        owner = meta.get("owner")
-        if owner is not None and owner != _key["node_id"]:
-            raise HTTPException(404, f"Session not found: {session_id}")
+    meta = _assert_session_access(session_id, _key["node_id"])
     if not meta:
         # Try to recover model from stored receipts if meta was lost
         receipts = FOUNDRY_STORE.get_session(session_id)
