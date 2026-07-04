@@ -95,9 +95,9 @@ def main():
         for c in result.claims:
             counts[c["label"]] = counts.get(c["label"], 0) + 1
         summary = " · ".join(f"{k} ×{v}" for k, v in sorted(counts.items()))
-        print(f"  [{summary}]  γ {result.drift:.3f}")
+        print(f"  [{summary}]  marker coverage {result.drift:.3f}")
 
-        # Drift visual
+        # Marker coverage visual
         d = result.drift
         if d < 0.10:
             gauge = "🟢"
@@ -105,7 +105,7 @@ def main():
             gauge = "🟡"
         else:
             gauge = "🔴"
-        print(f"  Drift gauge: {gauge} {d:.3f}\n")
+        print(f"  Marker coverage gauge: {gauge} {d:.3f}\n")
 
 
 if __name__ == "__main__":
