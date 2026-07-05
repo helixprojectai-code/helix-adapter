@@ -100,8 +100,15 @@ def _gloss(m: re.Match) -> str | None:
 
 
 _NON_LATIN_SCRIPT_NAMES = (
-    "CJK", "HIRAGANA", "KATAKANA", "HANGUL", "CYRILLIC",
-    "ARABIC", "HEBREW", "THAI", "DEVANAGARI",
+    "CJK",
+    "HIRAGANA",
+    "KATAKANA",
+    "HANGUL",
+    "CYRILLIC",
+    "ARABIC",
+    "HEBREW",
+    "THAI",
+    "DEVANAGARI",
 )
 
 
