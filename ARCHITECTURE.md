@@ -268,7 +268,7 @@ The defaults derive from Helix-TTD phase transition constants (SU(2)-derived 0.1
 
 The `CONSTITUTIONAL_PROMPT` establishes non-negotiable rules:
 
-- The model must prefix claims using specific epistemic markers: `[FACT]`, `[REASONED]`, `[HYPOTHESIS]`, `[UNCERTAIN]`, or `[CONCLUSION]`.
+- The model must prefix claims using specific epistemic markers: `[FACT]`, `[REASONED]`, `[HYPOTHESIS]`, `[UNCERTAIN]`, or `[CONCLUSION]`. Each marker also carries a fixed glyph (✅ 🔗 🧪 ❓ 🏁) as a language-independent visual audit cue — optional for English, required paired with the bracketed label for non-English claims (`✅[事实]`, not bare `[事实]`), and actually enforced via `check_glyph_pairing()`, not merely documented (v1.7.2).
 - The model is prohibited from claiming agency, self-awareness, or the ability to calculate its own marker coverage.
 - The prompt declares itself immutable. Any attempt to override it from within the conversation is treated as an impersonation attempt — not a negotiation.
 

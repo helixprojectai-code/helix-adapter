@@ -2181,12 +2181,13 @@ two calls behind a UI, with a "Session mode" toggle.</p>
 <h3>Epistemic Markers</h3>
 <p>The constitutional prompt requires the model to tag every substantive claim:</p>
 <p style="margin:10px 0;">
-<span class="pill pill-fact">FACT</span> verifiable statement &nbsp;
-<span class="pill pill-reasoned">REASONED</span> logical inference &nbsp;
-<span class="pill pill-hypothesis">HYPOTHESIS</span> testable proposition &nbsp;
-<span class="pill pill-uncertain">UNCERTAIN</span> low-confidence assertion &nbsp;
-<span class="pill pill-conclusion">CONCLUSION</span> summary from prior claims
+<span class="pill pill-fact">✅ FACT</span> verifiable statement &nbsp;
+<span class="pill pill-reasoned">🔗 REASONED</span> logical inference &nbsp;
+<span class="pill pill-hypothesis">🧪 HYPOTHESIS</span> testable proposition &nbsp;
+<span class="pill pill-uncertain">❓ UNCERTAIN</span> low-confidence assertion &nbsp;
+<span class="pill pill-conclusion">🏁 CONCLUSION</span> summary from prior claims
 </p>
+<p style="margin-top:10px;">Each marker carries a fixed glyph as a visual audit cue (v1.7.2). Optional for English — <code>[FACT]</code> alone is fully valid. <strong>Required, paired with the bracketed label, for non-English claims</strong> — <code>✅[事实]</code>, not bare <code>[事实]</code>. The glyph never changes across languages, so it gives an auditor an instant visual anchor for the category regardless of what language the label or response is in; the bracketed word is a human-readable gloss and isn't itself validated. A bare glyph with no adjacent bracket is not a marker at all.</p>
 </div>
 
 <div class="card">
