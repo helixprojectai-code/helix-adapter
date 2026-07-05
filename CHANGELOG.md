@@ -7,6 +7,25 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.7.2] — 2026-07-05
+
+### Added
+
+- **Glyph epistemic markers — multilingual audit cue.** Each of the five
+  epistemic markers now carries a fixed glyph (`[FACT]`=✅, `[REASONED]`=🔗,
+  `[HYPOTHESIS]`=🧪, `[UNCERTAIN]`=❓, `[CONCLUSION]`=🏁) as a
+  language-independent visual audit cue, paired with the bracketed label
+  rather than replacing it — `✅[FACT]` in English, `✅[事实]` in Chinese.
+  The parser keys off the glyph only; bracket content is an unvalidated
+  human-readable gloss in any language. Legacy pure-English `[FACT]` (no
+  glyph) remains fully valid for English claims. For non-English claims,
+  glyph pairing is now required and enforced — `check_glyph_pairing()`
+  (lightweight, dependency-free Unicode-script heuristic) flags any
+  non-Latin-script claim that used a bare bracket marker instead of
+  pairing its glyph, wired into `validate_response()` alongside every
+  other marker compliance rule. No API/schema changes — `drift_score`,
+  `drift_tier`, and the receipt shape are unaffected.
+
 ## [1.7.1] — 2026-07-03
 
 ### Fixed

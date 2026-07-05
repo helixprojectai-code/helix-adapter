@@ -151,13 +151,25 @@ with HelixSession(model_fn=call_model) as session:
 
 The constitutional prompt requires the model to label every claim:
 
-| Marker | Meaning |
-|--------|---------|
-| `[FACT]` | Verifiable statement |
-| `[REASONED]` | Logical inference |
-| `[HYPOTHESIS]` | Testable proposition |
-| `[UNCERTAIN]` | Low-confidence assertion |
-| `[CONCLUSION]` | Summary drawn from prior claims |
+| Marker | Glyph | Meaning |
+|--------|-------|---------|
+| `[FACT]` | ✅ | Verifiable statement |
+| `[REASONED]` | 🔗 | Logical inference |
+| `[HYPOTHESIS]` | 🧪 | Testable proposition |
+| `[UNCERTAIN]` | ❓ | Low-confidence assertion |
+| `[CONCLUSION]` | 🏁 | Summary drawn from prior claims |
+
+**Glyph pairing (v1.7.2):** each marker carries a fixed glyph as a visual
+audit cue. For English responses, the plain `[FACT]` form is fully valid
+on its own — the glyph is optional. For non-English responses (including
+zh-CN), the glyph is **required**, paired directly with the bracketed
+label in that language: `✅[事实]`, not the bare `[事实]` alone. The glyph
+is the one part of the marker that never changes, so it gives an auditor
+an instant visual anchor for the category regardless of what language the
+label or the surrounding response is in — the bracketed word is a
+human-readable gloss; only the glyph is load-bearing for parsing. A bare
+glyph with no adjacent bracket is not a marker (this is enforced, not just
+documented — see `check_glyph_pairing()` in `markers.py`).
 
 **Marker coverage** (`drift_score` field, for API stability) measures the fraction of
 substantive statements that lack markers. A score of 0.0 means fully labeled; 1.0 means
