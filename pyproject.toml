@@ -9,6 +9,9 @@ description = "Portable constitutional adapter for any LLM. Forces epistemic mar
 readme = "README.md"
 license = {text = "Apache-2.0"}
 authors = [
+    {name = "Stephen Hope"},
+]
+maintainers = [
     {name = "Stephen Hope", email = "helix.project.ai@helixprojectai.com"},
 ]
 keywords = [
