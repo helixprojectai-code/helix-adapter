@@ -2,6 +2,8 @@
 
 # helix-adapter
 
+**Version 1.7.3** · [Release Notes](RELEASE_NOTES_1.7.3.md) · [Changelog](CHANGELOG.md)
+
 **Portable constitutional wrapper for any AI model.**
 
 Wraps any inference backend with Helix epistemic markers, tamper-evident receipts,
