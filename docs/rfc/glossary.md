@@ -69,7 +69,10 @@ When enabled on `CedarPolicy`, any error during initialization or evaluation cau
 ## Related Concepts
 
 **RFC 0003**  
-The formal specification for Unified Policy Gating using Cedar in the Helix system.
+The formal specification for Unified Policy Gating using Cedar in the Helix system — the Cedar Gate that authorizes (or denies) an agent's proposed tool/action calls before execution.
+
+**RFC 0004**  
+The formal specification for Foundry's Cedar model-routing layer (`routing.cedar`) — a separate Cedar policy set from RFC 0003's Cedar Gate. This one decides which model pool handles an inference request; RFC 0003 decides whether an action is allowed to execute. Same policy engine, different question.
 
 **Foundry**  
-Helix's multi-model routing and orchestration layer. Can be combined with Cedar for policy-aware model selection.
+Helix's multi-model routing and orchestration layer. Uses Cedar for policy-aware model selection per RFC 0004.

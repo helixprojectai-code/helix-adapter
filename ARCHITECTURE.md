@@ -383,6 +383,15 @@ v1.4 added **CNCF Cedar** integration for dual-gate containment per RFC 0003:
 - **Fail-closed**: Unavailable policy engine = default deny, never default permit
 - **Lattice-approved**: Architecture reviewed and approved by four independent AI systems
 
+Foundry additionally uses a **second, independent Cedar policy set** for
+model-pool routing (`routing.cedar`, RFC 0004) — a different question
+(which model handles this request) from RFC 0003's Cedar Gate (is this
+action authorized to execute). The two share the Cedar engine but not a
+policy file, a schema, or a fail-open/fail-closed posture: routing fails
+*open* to a static action-map fallback (answer the request somehow),
+Cedar Gate fails *closed* (deny by default). See RFC 0004 for the
+context-field vocabulary and the five routing policies.
+
 ## 6. Testing Strategy
 
 - `test_basic.py` — Marker parsing, receipt integrity, marker-coverage edge cases. 11 unit tests.
