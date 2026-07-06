@@ -6,7 +6,7 @@
     "high_capability": "qwen-max",
     "adversarial":     "qwen-plus",
     "cost_optimized":  "qwen-turbo",
-    "sovereign":       "qwen-long"
+    "sovereign":       "qwen-flash"
   },
   "action_map": {
     "bash":        "qwen-plus",
@@ -20,8 +20,8 @@
     "edit_file":   "qwen-turbo",
     "apply_patch": "qwen-turbo",
     "summarize":   "qwen-turbo",
-    "translate":   "qwen-long",
-    "classify":    "qwen-long",
+    "translate":   "qwen-flash",
+    "classify":    "qwen-flash",
     "default":     "qwen-max"
   },
   "models": {
@@ -40,9 +40,9 @@
       "label": "Qwen Turbo",
       "temperature": 0.0
     },
-    "qwen-long": {
-      "deployment": "qwen-long",
-      "label": "Qwen Long",
+    "qwen-flash": {
+      "deployment": "qwen-flash",
+      "label": "Qwen Flash",
       "temperature": 0.0
     }
   }
