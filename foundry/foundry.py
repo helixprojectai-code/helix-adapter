@@ -89,7 +89,14 @@ MODEL_POOLS = list(MODEL_POOL_MAP.keys())
 
 def cedar_route(context: dict) -> dict:
     """Evaluate all ModelPool policies against context. Route to best match.
-    Returns {"model": str, "pool": str, "policy_hash": str, "reason": str}."""
+    Returns {"model": str, "pool": str, "policy_hash": str, "reason": str}.
+
+    None-valued fields are dropped before evaluation — an omitted optional
+    field (e.g. action_type when the caller didn't specify one) must read as
+    genuinely absent to Cedar's `context has X` checks, not as the literal
+    string "None" (which is what the evaluator's str(v) fallback would
+    otherwise produce for a non-str/int/bool/float value)."""
+    context = {k: v for k, v in context.items() if v is not None}
     try:
         from helix_adapter.cedar import CedarPolicy
 
@@ -882,12 +889,14 @@ class RoutedChatRequest(BaseModel):
     drift_tolerance: float = 0.10
     priority: str = "interactive"
     locale: str = "en"
+    action_type: str | None = None
 
 
 class SessionStartRequest(BaseModel):
     action: str = "analyze"
     task_complexity: int = 5
     drift_tolerance: float = 0.10
+    action_type: str | None = None
     priority: str = "interactive"
     locale: str = "en"
 
@@ -1017,7 +1026,7 @@ async def routed_chat(req: RoutedChatRequest, request: Request, _key: dict = Dep
 
     # Build context for Cedar routing policies
     context = {
-        "action_type": req.action,
+        "action_type": req.action_type,
         "task_complexity": req.task_complexity,
         "drift_tolerance": req.drift_tolerance,
         "priority": req.priority,
@@ -1124,7 +1133,7 @@ async def session_start(
     """Cedar-route context, commit model, create session. Returns session_id."""
     _check_rate_limit(request)
     context = {
-        "action_type": req.action,
+        "action_type": req.action_type,
         "task_complexity": req.task_complexity,
         "drift_tolerance": req.drift_tolerance,
         "priority": req.priority,

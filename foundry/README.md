@@ -73,7 +73,33 @@ Cedar Decision Mesh evaluates context → selects ModelPool → routes to model.
 When the Cedar native library (cedar-python) is unavailable, falls back to a
 static action→model map with zero added latency.
 
-Cedar policies live in `routing.cedar` with a schema in `routing.schema`.
+Cedar policies live in `routing.cedar` with a schema in `routing.schema`. This
+is a separate Cedar policy layer from the core adapter's Cedar Gate (RFC
+0003, `src/helix_adapter/cedar/`) — that one gates whether an agent's
+proposed tool/action call is *authorized to execute*; this one only decides
+*which model pool* handles an inference request. Same policy engine, two
+independent policy sets serving different purposes.
+
+### Context fields
+
+`/routed-chat` and `/session/start` accept these optional context fields,
+evaluated against `routing.cedar`'s five policies:
+
+| Field | Type | Used by | Meaning |
+|---|---|---|---|
+| `task_complexity` | int, 1–10 | Policy 1 (high_capability) | Declared difficulty of the task |
+| `drift_tolerance` | float, 0.0–1.0 | Policies 1, 3 | How much unlabeled text is acceptable |
+| `priority` | str | Policy 3 (cost_optimized) | `"interactive"` or `"batch"` |
+| `locale` | str | Policy 4 (sovereign) | BCP47-ish tag: `fr`/`de`/`es`/`it`/`nl`/`pt` route to the EU/multilingual pool |
+| `action_type` | str, optional | Policies 2, 5 (adversarial, structured-output) | Execution-context signal: `bash`/`execute`/`api_call`/`shell` (adversarial-tier) or `write_file`/`edit_file`/`apply_patch`/`summarize` (structured-output) |
+
+**`action_type` is not the same field as the request's top-level `action`.**
+`action` (e.g. `"analyze"`, `"search"`, `"write_file"`) drives the static
+fallback map (`action_map` in each deployment's `models.json`) and is always
+present. `action_type` is a separate, optional signal specifically for
+Cedar's adversarial/structured-output policies and is only set when a
+caller explicitly wants that routing behavior — omit it and those two
+policies simply won't match, same as any other unset context field.
 
 ## Deploy
 
