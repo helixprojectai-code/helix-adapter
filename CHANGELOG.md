@@ -7,6 +7,41 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.7.3] — 2026-07-06
+
+### Fixed
+
+- **Cedar routing: all 5 policies now reachable (previously 2 of 5).**
+  `action_type` (Cedar's adversarial/structured-output trigger) was being
+  fed from `req.action`, a field with a completely different vocabulary —
+  the two never overlapped, so the adversarial-pool policy was dead code
+  reachable only in unit tests. Added a genuine, separate `action_type`
+  field to `RoutedChatRequest`/`SessionStartRequest`. `cedar_route()` also
+  now drops `None`-valued context fields before evaluation. All 5 policies
+  verified live against the running qwen-intl deployment.
+- **Sovereign pool model swap.** `qwen-long` doesn't exist on the
+  DashScope International account; `qwen-mt-plus` rejects `system`-role
+  messages (incompatible with Helix's adapter). Replaced with
+  `qwen-flash`, verified with a live system+user message pair.
+- **Constitutional prompt: γ/drift conflation removed from the prompt
+  content itself**, not just docs/dashboard (which 1.7.1 already fixed).
+  Rules 4.5 and 7 in `prompt.py` still used γ and "drift" in contexts
+  that are actually about marker coverage. Wording only, no behavior
+  change.
+- **PyPI author metadata.** Split `authors`/`maintainers` in
+  `pyproject.toml` so PyPI displays Author correctly (was blank due to a
+  PEP 621 name+email collapse into `Author-email` only).
+
+### Added
+
+- **RFC 0004: Cedar Model Routing** — documents Foundry's model-routing
+  Cedar policy layer as a system distinct from RFC 0003's action-gating
+  Cedar Gate.
+- **Dev onboarding deck replaced (PDF → HTML)** — the PDF had a
+  fabricated "Drift Telemetry" taxonomy and a missing `[CONCLUSION]`
+  marker; the HTML version fixes both plus one more gap found in review
+  (an incomplete Four Invariants slide).
+
 ## [1.7.2] — 2026-07-05
 
 ### Added

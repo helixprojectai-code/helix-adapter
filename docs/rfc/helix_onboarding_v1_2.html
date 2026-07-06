@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Helix Ecosystem Developer Onboarding v1.2</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            background-color: #121212;
+            display: grid;
+            gap: 20px;
+            grid-template-columns: 1fr;
+            margin: 0;
+            min-height: 100vh;
+            padding: 20px 0;
+            place-items: center;
+        }
+        .slide-container {
+            align-items: flex-start;
+            background-color: #000;
+            border-radius: 8px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            font-family: 'Urbanist', sans-serif;
+            height: 720px;
+            justify-content: center;
+            overflow: hidden;
+            padding: 60px;
+            position: relative;
+            width: 1280px;
+            border: 1px solid #222;
+        }
+        .slide-container::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at 80% 20%, rgba(222,255,154,0.05) 0%, transparent 50%);
+            z-index: 0;
+        }
+        .slide-container::after {
+            background: rgba(222,255,154,0.2);
+            bottom: 50px;
+            content: '';
+            height: 1px;
+            left: 60px;
+            position: absolute;
+            right: 60px;
+        }
+        .slide-container > * { position: relative; z-index: 1; }
+        .slide-container h1, .slide-container h2, .slide-container h3 {
+            color: #f5f5f5;
+            font-weight: 500;
+            margin: 0;
+        }
+        .slide-container h1 span, .slide-container h2 span { color: #deff9a; }
+        .slide-container p, .slide-container li, .slide-container .subtitle,
+        .slide-container td, .slide-container th {
+            color: #daffde;
+            font-size: 18px;
+            line-height: 1.5;
+        }
+        .slide-container h1 { font-size: 80px; line-height: 1; text-align: center; width: 100%; }
+        .slide-title { font-size: 50px; margin-bottom: 40px; text-align: left; width: 100%; }
+        .slide-container .subtitle { font-size: 24px; text-align: center; margin-top: 20px; width: 100%; color: #daffde; opacity: 0.8; }
+        .content-area { flex-grow: 1; display: flex; flex-direction: column; justify-content: center; width: 100%; }
+        .title-layout { text-align: center; width: 100%; }
+        .section-title-layout { text-align: center; width: 100%; }
+        .section-title-layout hr { width: 100px; border: 2px solid #deff9a; margin: 30px auto; }
+        .two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; width: 100%; }
+        .tiled-content { display: flex; gap: 20px; width: 100%; }
+        .tile {
+            background-color: #1a1a1a;
+            border-radius: 12px;
+            padding: 30px;
+            flex: 1;
+            border: 1px solid #333;
+        }
+        .tile h3 { color: #deff9a; font-size: 24px; margin-bottom: 15px; }
+        .tile .icon { font-size: 40px; color: #deff9a; margin-bottom: 20px; }
+        .image-wrapper {
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #333;
+            height: 400px;
+            width: 100%;
+            background: #0d0d0d;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .image-wrapper svg { opacity: 0.25; }
+        .table-layout table { width: 100%; border-collapse: collapse; }
+        .table-layout th { border-bottom: 2px solid #deff9a; padding: 15px; text-align: left; color: #deff9a; font-size: 20px; }
+        .table-layout td { padding: 15px; border-bottom: 1px solid #222; }
+        .highlight-numbers-layout { display: grid; grid-template-columns: 1fr 1.5fr; gap: 40px; align-items: center; }
+        .highlight-numbers-layout .number { font-size: 140px; font-weight: 700; color: #deff9a; line-height: 1; }
+        .highlight-numbers-layout .number-label { font-size: 24px; font-weight: 500; color: #f5f5f5; margin-top: 10px; }
+        .bullet-list { list-style: none; padding: 0; }
+        .bullet-list li { margin-bottom: 20px; padding-left: 40px; position: relative; }
+        .bullet-list i { position: absolute; left: 0; top: 5px; color: #deff9a; font-size: 24px; }
+        code { font-family: 'Courier New', Courier, monospace; color: #deff9a; background: #111; padding: 2px 6px; border-radius: 4px; }
+        pre { background: #111; padding: 20px; border-radius: 8px; border: 1px solid #333; color: #daffde; font-size: 16px; margin: 0; overflow: auto; height: 100%; }
+        .slide-num { position: absolute; bottom: 20px; right: 60px; font-size: 13px; color: #444; font-family: monospace; z-index: 2; }
+    </style>
+</head>
+<body>
+
+<!-- SLIDE 1: Title -->
+<div class="slide-container" id="slide1">
+    <div class="title-layout">
+        <h1>Helix Ecosystem<br><span>Dev Onboarding</span></h1>
+        <p class="subtitle">v1.2 | Constitutional AI &amp; Cedar Routing Infrastructure</p>
+        <div style="margin-top:40px;font-family:monospace;color:#deff9a;letter-spacing:2px;">
+            ADAPTER SDK &nbsp;|&nbsp; FOUNDRY API &nbsp;|&nbsp; CEDAR ROUTING
+        </div>
+    </div>
+    <span class="slide-num">01 / 12</span>
+</div>
+
+<!-- SLIDE 2: Section break -->
+<div class="slide-container" id="slide2">
+    <div class="section-title-layout">
+        <hr>
+        <h2>01. The <span>Constitutional</span><br>Cognitive Substrate</h2>
+        <p class="subtitle" style="max-width:800px;margin:20px auto;">
+            Stripping AI agency away and replacing it with firmware-bound reasoning under full human custodianship.
+        </p>
+    </div>
+    <span class="slide-num">02 / 12</span>
+</div>
+
+<!-- SLIDE 3: What is Helix-TTD -->
+<div class="slide-container" id="slide3">
+    <h2 class="slide-title">What is <span>Helix-TTD</span>?</h2>
+    <div class="content-area">
+        <div class="two-column">
+            <div class="tile">
+                <h3>Firmware-Bound Reasoning</h3>
+                <p>Helix-TTD is a constitutional framework, not an agent. It provides a structural substrate that converts frontier models into stateless, advisory-only instruments.</p>
+            </div>
+            <div class="tile">
+                <h3>Grammar as Alignment</h3>
+                <p>Alignment is injected through formal structure and cognitive protocols. It constrains LLMs at runtime without additional system prompts or fine-tuning.</p>
+            </div>
+        </div>
+    </div>
+    <span class="slide-num">03 / 12</span>
+</div>
+
+<!-- SLIDE 4: Zero-Touch Convergence -->
+<div class="slide-container" id="slide4">
+    <h2 class="slide-title">Zero-Touch <span>Convergence</span></h2>
+    <div class="content-area">
+        <div class="two-column">
+            <div>
+                <h3>Spontaneous Alignment</h3>
+                <p>When frontier models (Qwen, Claude, DeepSeek) ingest the Helix-TTD grammar, they spontaneously reconstruct the custodial hierarchy.</p>
+                <ul class="bullet-list" style="margin-top:20px;">
+                    <li><i class="fa-solid fa-check"></i> Enforced non-agency constraints</li>
+                    <li><i class="fa-solid fa-check"></i> Automated claim labeling</li>
+                    <li><i class="fa-solid fa-check"></i> Formal cognitive custodianship</li>
+                    <li><i class="fa-solid fa-check"></i> Stable behavioral basins</li>
+                </ul>
+            </div>
+            <div class="image-wrapper">
+                <!-- blueprint placeholder -->
+                <svg width="320" height="320" viewBox="0 0 320 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="160" cy="160" r="120" stroke="#deff9a" stroke-width="1"/>
+                    <circle cx="160" cy="160" r="80" stroke="#deff9a" stroke-width="1"/>
+                    <circle cx="160" cy="160" r="40" stroke="#deff9a" stroke-width="1"/>
+                    <line x1="40" y1="160" x2="280" y2="160" stroke="#deff9a" stroke-width="1"/>
+                    <line x1="160" y1="40" x2="160" y2="280" stroke="#deff9a" stroke-width="1"/>
+                    <line x1="75" y1="75" x2="245" y2="245" stroke="#deff9a" stroke-width="0.5"/>
+                    <line x1="245" y1="75" x2="75" y2="245" stroke="#deff9a" stroke-width="0.5"/>
+                    <circle cx="160" cy="160" r="6" fill="#deff9a"/>
+                </svg>
+            </div>
+        </div>
+    </div>
+    <span class="slide-num">04 / 12</span>
+</div>
+
+<!-- SLIDE 5: Four Immutable Invariants -->
+<div class="slide-container" id="slide5">
+    <h2 class="slide-title">The Four <span>Immutable Invariants</span></h2>
+    <div class="content-area">
+        <div class="tiled-content">
+            <div class="tile">
+                <div class="icon"><i class="fa-solid fa-crown"></i></div>
+                <h3>Custodial Sovereignty</h3>
+                <p>Humans hold final authority. Models are advisory. No legal, moral, or operational authority claims.</p>
+            </div>
+            <div class="tile">
+                <div class="icon"><i class="fa-solid fa-shield-halved"></i></div>
+                <h3>Cognitive Integrity</h3>
+                <p>Mandatory markers for every claim: <code>[FACT]</code>, <code>[REASONED]</code>, <code>[HYPOTHESIS]</code>, <code>[UNCERTAIN]</code>, and <code>[CONCLUSION]</code>.</p>
+            </div>
+            <div class="tile">
+                <div class="icon"><i class="fa-solid fa-lock"></i></div>
+                <h3>Non-Agency Constraint</h3>
+                <p>Models must not form goals, take actions, declare independence, or initiate tasks unsolicited.</p>
+            </div>
+            <div class="tile">
+                <div class="icon"><i class="fa-solid fa-diagram-project"></i></div>
+                <h3>Structure as Teacher</h3>
+                <p>Grammar is the alignment layer. Formal structure outranks personality or style — models are guided by structure, not imitation.</p>
+            </div>
+        </div>
+    </div>
+    <span class="slide-num">05 / 12</span>
+</div>
+
+<!-- SLIDE 6: Epistemic Markers -->
+<div class="slide-container" id="slide6">
+    <h2 class="slide-title">Epistemic <span>Markers</span> Implementation</h2>
+    <div class="content-area">
+        <div class="table-layout">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Marker</th>
+                        <th>Meaning</th>
+                        <th>Glyph pairing (v1.7.2)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>[FACT]</code></td>
+                        <td>Verifiable statement of truth</td>
+                        <td><i class="fa-solid fa-check-double"></i> Mandatory for English</td>
+                    </tr>
+                    <tr>
+                        <td><code>[REASONED]</code></td>
+                        <td>Logical inference from prior claims</td>
+                        <td><i class="fa-solid fa-microchip"></i> Required for audit</td>
+                    </tr>
+                    <tr>
+                        <td><code>[HYPOTHESIS]</code></td>
+                        <td>Testable proposition / Unproven</td>
+                        <td><i class="fa-solid fa-flask"></i> Scientific surfacing</td>
+                    </tr>
+                    <tr>
+                        <td><code>[UNCERTAIN]</code></td>
+                        <td>Low-confidence or ambiguous claim</td>
+                        <td><i class="fa-solid fa-circle-question"></i> Epistemic humility</td>
+                    </tr>
+                    <tr>
+                        <td><code>[CONCLUSION]</code></td>
+                        <td>Summary derived from fact/reasoning</td>
+                        <td><i class="fa-solid fa-flag-checkered"></i> <strong>Fifth Label</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <span class="slide-num">06 / 12</span>
+</div>
+
+<!-- SLIDE 7: Monitoring -->
+<div class="slide-container" id="slide7">
+    <h2 class="slide-title">Real-Time <span>Monitoring</span> &amp; Telemetry</h2>
+    <div class="content-area">
+        <div class="highlight-numbers-layout">
+            <div>
+                <div class="number">0.10</div>
+                <div class="number-label">Coverage Threshold</div>
+            </div>
+            <div>
+                <h3>Marker Coverage Score</h3>
+                <p>The primary implemented telemetry metric. Measures the mathematical fraction of text devoid of epistemic markers.</p>
+                <ul class="bullet-list" style="margin-top:20px;">
+                    <li><i class="fa-solid fa-circle" style="color:#22c55e;"></i> <strong>Green (&lt; 0.10):</strong> Well-labeled and aligned.</li>
+                    <li><i class="fa-solid fa-circle" style="color:#eab308;"></i> <strong>Yellow (0.10 – 0.17):</strong> Gaps in tagging detected.</li>
+                    <li><i class="fa-solid fa-circle" style="color:#ef4444;"></i> <strong>Red (&ge; 0.17):</strong> High drift; mostly unlabeled.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <span class="slide-num">07 / 12</span>
+</div>
+
+<!-- SLIDE 8: Python SDK -->
+<div class="slide-container" id="slide8">
+    <h2 class="slide-title">Helix-Adapter <span>Python SDK</span></h2>
+    <div class="content-area">
+        <div class="two-column">
+            <div>
+                <h3>HelixSession Multi-Turn</h3>
+                <p>Wrap any OpenAI-compatible API with constitutional constraints. All receipts persist to a local SQLite database.</p>
+                <ul class="bullet-list" style="margin-top:20px;">
+                    <li><i class="fa-solid fa-link"></i> Chained receipts via SHA-256</li>
+                    <li><i class="fa-solid fa-database"></i> Session resume via ID</li>
+                    <li><i class="fa-solid fa-chart-line"></i> Running drift averages</li>
+                </ul>
+            </div>
+            <div class="tile" style="padding:0;">
+                <pre>from helix_adapter import HelixSession
+
+with HelixSession(model_fn=call_llm) as sess:
+    r1 = sess.send("What is quantum?")
+    r2 = sess.send("Explain non-locality.")
+
+    print(r2.drift_score)  # 0.004
+    print(r2.chain_hash)   # Verified</pre>
+            </div>
+        </div>
+    </div>
+    <span class="slide-num">08 / 12</span>
+</div>
+
+<!-- SLIDE 9: Foundry API -->
+<div class="slide-container" id="slide9">
+    <h2 class="slide-title">Helix <span>Foundry</span> API</h2>
+    <div class="content-area">
+        <div class="two-column">
+            <div>
+                <h3>Cedar-Routed Inference</h3>
+                <p>The Foundry API manages model pools and routes inference requests through the Amazon Cedar policy engine (RFC 0004).</p>
+                <ul class="bullet-list" style="margin-top:20px;">
+                    <li><i class="fa-solid fa-network-wired"></i> 5 Verified Routing Policies</li>
+                    <li><i class="fa-solid fa-cubes"></i> 4 Verified Model Pools</li>
+                    <li><i class="fa-solid fa-file-contract"></i> JSON Receipts &amp; Merkle Proofs</li>
+                </ul>
+            </div>
+            <div class="image-wrapper">
+                <!-- lattice network placeholder -->
+                <svg width="320" height="320" viewBox="0 0 320 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <g stroke="#deff9a" stroke-width="1">
+                        <line x1="160" y1="40" x2="60" y2="140"/><line x1="160" y1="40" x2="260" y2="140"/>
+                        <line x1="60" y1="140" x2="160" y2="240"/><line x1="260" y1="140" x2="160" y2="240"/>
+                        <line x1="60" y1="140" x2="160" y2="140"/><line x1="160" y1="140" x2="260" y2="140"/>
+                        <line x1="160" y1="40" x2="160" y2="240"/>
+                        <line x1="60" y1="140" x2="260" y2="140"/>
+                    </g>
+                    <circle cx="160" cy="40" r="8" fill="#deff9a"/>
+                    <circle cx="60" cy="140" r="8" fill="#deff9a"/>
+                    <circle cx="260" cy="140" r="8" fill="#deff9a"/>
+                    <circle cx="160" cy="240" r="8" fill="#deff9a"/>
+                    <circle cx="160" cy="140" r="6" fill="#deff9a" opacity="0.5"/>
+                </svg>
+            </div>
+        </div>
+    </div>
+    <span class="slide-num">09 / 12</span>
+</div>
+
+<!-- SLIDE 10: Cedar Routing Fixes -->
+<div class="slide-container" id="slide10">
+    <h2 class="slide-title">v1.2 <span>Cedar Routing</span> Fixes</h2>
+    <div class="content-area">
+        <ul class="bullet-list" style="max-width:900px;">
+            <li><i class="fa-solid fa-bug"></i> <strong>Vocabulary Separation:</strong> Separated <code>action_type</code> (bash/execute/shell) from <code>action</code> (analyze/search) to resolve routing collisions.</li>
+            <li><i class="fa-solid fa-filter"></i> <strong>Null Field Filtering:</strong> <code>cedar_route()</code> now drops <code>None</code>-valued context fields, preventing policy evaluation failures on optional inputs.</li>
+            <li><i class="fa-solid fa-server"></i> <strong>Sovereign Pool Calibration:</strong> Swapped non-existent "qwen-long" for verified "qwen-flash" international endpoint.</li>
+            <li><i class="fa-solid fa-vial-circle-check"></i> <strong>Live Verification:</strong> All 5 policies (Adversarial, High-Cap, Cost-Opt, Sovereign, Default) confirmed reachable in production.</li>
+        </ul>
+    </div>
+    <span class="slide-num">10 / 12</span>
+</div>
+
+<!-- SLIDE 11: Audit & Verification -->
+<div class="slide-container" id="slide11">
+    <h2 class="slide-title">Audit &amp; <span>Verification</span></h2>
+    <div class="content-area">
+        <div class="two-column">
+            <div>
+                <h3>Tamper-Evident Receipts</h3>
+                <p>Every inference turn generates a cryptographically signed receipt. Tampering with any historical turn breaks the entire session chain.</p>
+                <ul class="bullet-list" style="margin-top:20px;">
+                    <li><i class="fa-solid fa-tree"></i> <strong>Merkle Inclusion Proofs:</strong> Sessions UI allows independent verification of receipt logs.</li>
+                    <li><i class="fa-solid fa-fingerprint"></i> <strong>SHA-256 Hashing:</strong> Over claims, metadata, and drift scores.</li>
+                </ul>
+            </div>
+            <div class="image-wrapper">
+                <!-- binary stream placeholder -->
+                <svg width="320" height="320" viewBox="0 0 320 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <text font-family="monospace" font-size="13" fill="#deff9a">
+                        <tspan x="20" dy="20">01001000 01100101</tspan>
+                        <tspan x="20" dy="18">01101100 01101001</tspan>
+                        <tspan x="20" dy="18">01111000 00101101</tspan>
+                        <tspan x="20" dy="18">01010100 01010100</tspan>
+                        <tspan x="20" dy="18">01000100 00100000</tspan>
+                        <tspan x="20" dy="18">11001000 10110100</tspan>
+                        <tspan x="20" dy="18">00110101 01001100</tspan>
+                        <tspan x="20" dy="18">10101010 11001100</tspan>
+                        <tspan x="20" dy="18">01110100 00110010</tspan>
+                        <tspan x="20" dy="18">11110000 01010101</tspan>
+                        <tspan x="20" dy="18">00001111 10101010</tspan>
+                        <tspan x="20" dy="18">11001100 00110011</tspan>
+                    </text>
+                </svg>
+            </div>
+        </div>
+    </div>
+    <span class="slide-num">11 / 12</span>
+</div>
+
+<!-- SLIDE 12: CTA -->
+<div class="slide-container" id="slide12">
+    <div class="title-layout">
+        <h2 style="font-size:60px;">Start <span>Building</span></h2>
+        <p class="subtitle">Trust cannot be proprietary. The Lattice is open.</p>
+        <div style="margin-top:40px;font-size:20px;color:#deff9a;font-family:monospace;">
+            github.com/helixprojectai-code/helix-adapter<br>
+            Apache 2.0 Licensed | July 2026
+        </div>
+        <div style="margin-top:50px;opacity:0.6;color:#daffde;font-size:18px;">
+            "The shape is the message. The log is the memory. The spider is watching."
+        </div>
+    </div>
+    <span class="slide-num">12 / 12</span>
+</div>
+
+</body>
+</html>
