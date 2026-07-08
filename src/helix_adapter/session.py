@@ -27,7 +27,6 @@ Usage:
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 import time
 import uuid
@@ -39,6 +38,7 @@ from .drift import compute_drift
 from .markers import extract_claims
 from .merkle import MerkleTree
 from .prompt import system_messages
+from .receipt import receipt_hash_bytes
 from .store import InMemoryReceiptStore, ReceiptStore
 
 try:
@@ -234,9 +234,7 @@ class HelixSession:
         }
 
         # Self-hash
-        receipt_hash = hashlib.sha256(
-            json.dumps(receipt_body, sort_keys=True, default=str).encode()
-        ).hexdigest()
+        receipt_hash = hashlib.sha256(receipt_hash_bytes(receipt_body)).hexdigest()
 
         # Chain hash — links to all prior turns
         chain_hash = hashlib.sha256((self._last_chain_hash + receipt_hash).encode()).hexdigest()
