@@ -8,6 +8,42 @@
 import hashlib
 import json
 import time
+import unicodedata
+
+
+def _nfc(obj):
+    """Recursively normalize string values to Unicode NFC form.
+
+    ROUGHED IN for review (2026-07-08), not yet wired into session.py's turn
+    hashing — see receipt_hash_bytes() below for the intended call site.
+
+    Why: hashing already sorts keys (json.dumps(..., sort_keys=True)), which
+    handles key-order variance, but does nothing about Unicode normalization
+    form. Two strings that read as identical text can serialize to different
+    bytes if one arrived pre-composed (e.g. "é") and the other
+    decomposed (e.g. "e" + combining acute) — different APIs and platforms
+    aren't consistent about which form they emit. That would silently change
+    a receipt's hash for content a human would call unchanged, which is
+    exactly the failure mode a tamper-evidence system should not have.
+    Normalizing to NFC before hashing closes that gap without touching the
+    public schema or rejecting any value type.
+    """
+    if isinstance(obj, str):
+        return unicodedata.normalize("NFC", obj)
+    if isinstance(obj, dict):
+        return {k: _nfc(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_nfc(item) for item in obj]
+    return obj
+
+
+def receipt_hash_bytes(receipt: dict) -> bytes:
+    """Canonical bytes for hashing a receipt dict: NFC-normalized, key-sorted,
+    UTF-8 encoded JSON. Use this instead of a bare json.dumps(...).encode()
+    at any receipt-hashing call site (make_receipt below, and session.py's
+    turn/chain hashing) so all receipt hashes are normalized consistently.
+    """
+    return json.dumps(_nfc(receipt), sort_keys=True, default=str).encode("utf-8")
 
 
 def make_receipt(
@@ -53,9 +89,7 @@ def make_receipt(
         "hash": "",
     }
     # Self-hash: the receipt seals itself
-    receipt_hash = hashlib.sha256(
-        json.dumps(receipt, sort_keys=True, default=str).encode()
-    ).hexdigest()
+    receipt_hash = hashlib.sha256(receipt_hash_bytes(receipt)).hexdigest()
     receipt["hash"] = receipt_hash
     return receipt
 
