@@ -6,7 +6,7 @@
     "high_capability": "qwen-max",
     "adversarial":     "qwen-plus",
     "cost_optimized":  "qwen-turbo",
-    "sovereign":       "qwen-flash"
+    "sovereign":       "qwen3-max"
   },
   "action_map": {
     "bash":        "qwen-plus",
@@ -43,6 +43,11 @@
     "qwen-flash": {
       "deployment": "qwen-flash",
       "label": "Qwen Flash",
+      "temperature": 0.0
+    },
+    "qwen3-max": {
+      "deployment": "qwen3-max",
+      "label": "Qwen3 Max",
       "temperature": 0.0
     }
   }
