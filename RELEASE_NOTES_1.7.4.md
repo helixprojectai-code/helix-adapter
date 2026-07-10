@@ -93,13 +93,86 @@ See `store.py` and the Shape Bureau roadmap.
 
 ---
 
+## WIP: Test Suite Hardening & Misc Catches (2026-07-10, post-merge)
+
+Filed under the same 1.7.4 cycle rather than a separate release — this is
+follow-up work discovered while syncing with the build-dev merge, not a
+new feature set. Author lead for testing on `helix-adapter` rotates to
+Spider going forward, per Custodian assignment.
+
+### Critical: foundry.py had a syntax error on main
+
+`cedar_route()`'s docstring was missing its closing `"""` — a stray
+leftover comment line ("None-valued fields are dropped before
+evaluation.") absorbed what should have been the closing quote. That
+swallowed roughly 140 lines of real Cedar routing logic into an inert
+string literal; the entire file failed to parse. **Not deployed** —
+helix2vm2's live server still had valid, working syntax, since nobody
+had redeployed since the build-dev merge — but `main` itself was broken.
+Fixed with a one-line change (restoring the closing `"""`).
+
+### Root cause: zero test coverage on foundry.py, and no pytest CI at all
+
+`foundry/foundry.py` is a standalone script, never part of the installed
+`src/helix_adapter` package, so pytest's default collection never touched
+it — that's how the syntax error above went undetected. Separately, and
+more foundationally: there was **no CI workflow running `pytest` at all**
+before this — only `lint.yml` (ruff+black) and the PyPI publish workflow
+existed. The lint check *did* correctly fail on the broken commit
+(confirmed via `gh pr checks`), but the PR merged anyway.
+
+Two fixes:
+- `tests/test_foundry_syntax.py` — zero-dependency AST-parse and
+  deployment-config validation. Runs in every environment, no extras
+  needed. Verified it actually catches this exact bug class by
+  deliberately reintroducing the missing `"""`, confirming the test
+  fails with the same error, then restoring the fix and confirming green.
+- `tests/test_foundry.py` — functional tests (clean import, `cedar_route()`
+  schema shape incl. the new `decision`/`matched_policy`/`policy_version`
+  fields, the 1.7.3 `None`-filtering regression, a live `TestClient`
+  health check). Gated behind `pytest.importorskip("fastapi"/"openai")`
+  since those are the `widget` extra, not core dev deps — skips cleanly
+  rather than erroring when absent.
+- `.github/workflows/test.yml` — new workflow, installs `dev`+`widget`
+  extras and runs the full suite on push/PR.
+
+144 tests pass in a plain dev-only environment (2 new, always-run), 148
+with widget extras installed (+4 more, previously 0 for foundry.py).
+
+### Misc catches along the way
+
+- **Missing `requires-python` constraint.** `pyproject.toml` had none at
+  all, despite classifiers claiming 3.10/3.11/3.12 support. Verified
+  directly: all three published `cedar_python` versions (a required
+  dependency) need Python ≥3.12 — none support 3.10/3.11. The package has
+  never actually been installable on those versions; anyone on them got
+  a confusing "no matching distribution for cedar_python" with no signal
+  why. Added `requires-python = ">=3.12"`, trimmed the classifiers to
+  match, bumped black/ruff `target-version` from `py310` to `py312`.
+  Both CI workflows now pin Python 3.12 (the new `test.yml` failed its
+  first run for exactly this reason — copied `lint.yml`'s 3.11 pin, which
+  never hit the problem since lint never actually installs the package).
+- Cleaned up pre-existing lint failures inherited from the build-dev
+  merge itself (long lines from the new RFC3339 timestamp and
+  `verify_receipt` error-message code in `receipt.py`/`session.py`/
+  `store.py`; an unused import and a duplicate import in the new
+  canonicalization tests). Independently re-verified (by hand, via
+  `hashlib.sha256`) the two new canonicalization test vectors' SHA-256
+  hashes before adding `noqa` suppressions to their necessarily-long JSON
+  literal lines — confirmed correct, not fabricated placeholders.
+
+---
+
 ## Upgrade
 
 ```bash
 pip install --upgrade helix-adapter==1.7.4
 ```
 
-Existing 1.7.3 receipts and sessions remain fully compatible.
+Existing 1.7.3 receipts and sessions remain fully compatible. Note the
+new `requires-python = ">=3.12"` floor — this isn't a new restriction,
+just the first time it's been declared; the package was never actually
+installable below 3.12 once `cedar_python` was added as a dependency.
 
 ---
 
