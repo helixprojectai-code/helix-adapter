@@ -12,22 +12,7 @@ import unicodedata
 
 
 def _nfc(obj):
-    """Recursively normalize string values to Unicode NFC form.
-
-    ROUGHED IN for review (2026-07-08), not yet wired into session.py's turn
-    hashing — see receipt_hash_bytes() below for the intended call site.
-
-    Why: hashing already sorts keys (json.dumps(..., sort_keys=True)), which
-    handles key-order variance, but does nothing about Unicode normalization
-    form. Two strings that read as identical text can serialize to different
-    bytes if one arrived pre-composed (e.g. "é") and the other
-    decomposed (e.g. "e" + combining acute) — different APIs and platforms
-    aren't consistent about which form they emit. That would silently change
-    a receipt's hash for content a human would call unchanged, which is
-    exactly the failure mode a tamper-evidence system should not have.
-    Normalizing to NFC before hashing closes that gap without touching the
-    public schema or rejecting any value type.
-    """
+    """Recursively normalize string values to Unicode NFC form."""
     if isinstance(obj, str):
         return unicodedata.normalize("NFC", obj)
     if isinstance(obj, dict):
@@ -37,13 +22,96 @@ def _nfc(obj):
     return obj
 
 
+def _float_to_fixed_str(o: float) -> str:
+    """Convert float to fixed-precision string (per RECEIPT CANONICALIZATION SPEC v1.0).
+    Uses 10 decimal places and strips trailing zeros for clean representation.
+    """
+    s = f"{o:.10f}".rstrip("0").rstrip(".")
+    return s
+
+
+def _prepare_for_canonical(obj):
+    """Recursively prepare dict for canonical serialization:
+    - NFC strings
+    - Floats -> fixed-precision strings (no raw floats in output)
+    - Other types passed through
+    """
+    if isinstance(obj, float):
+        return _float_to_fixed_str(obj)
+    if isinstance(obj, str):
+        return unicodedata.normalize("NFC", obj)
+    if isinstance(obj, dict):
+        return {k: _prepare_for_canonical(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_prepare_for_canonical(item) for item in obj]
+    return obj
+
+
+def canonicalize(receipt: dict) -> bytes:
+    """Produce canonical bytes for a receipt per RECEIPT CANONICALIZATION SPEC v1.0.
+
+    Rules applied:
+    - JSON keys sorted lexicographically (Unicode code point order)
+    - All strings NFC normalized
+    - Zero whitespace outside string values (separators=(',', ':'))
+    - Floats converted to fixed-precision strings
+    - Timestamps must be RFC3339 nanosecond UTC (caller responsibility)
+    - Arrays order preserved
+    - Nulls explicit
+    - UTF-8 encoded, no BOM
+    """
+    prepared = _prepare_for_canonical(receipt)
+    s = json.dumps(
+        prepared,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+        ensure_ascii=False,
+    )
+    return s.encode("utf-8")
+
+
 def receipt_hash_bytes(receipt: dict) -> bytes:
-    """Canonical bytes for hashing a receipt dict: NFC-normalized, key-sorted,
-    UTF-8 encoded JSON. Use this instead of a bare json.dumps(...).encode()
-    at any receipt-hashing call site (make_receipt below, and session.py's
-    turn/chain hashing) so all receipt hashes are normalized consistently.
+    """Canonical bytes for hashing. Delegates to canonicalize (SPEC v1.0)."""
+    return canonicalize(receipt)
+
+
+def _legacy_receipt_hash_bytes(receipt: dict) -> bytes:
+    """Legacy (pre-v1.7.4) hash bytes: NFC + sort_keys but with default whitespace.
+    Used only for verifying legacy receipts that lack canonical_version.
     """
     return json.dumps(_nfc(receipt), sort_keys=True, default=str).encode("utf-8")
+
+
+def verify_receipt(receipt: dict, expected_hash: str | None = None) -> bool:
+    """Verify a receipt's hash using the canonicalization appropriate for its version.
+
+    Per RECEIPT CANONICALIZATION SPEC v1.0:
+    - If canonical_version == "1.0": use canonicalize() then SHA256
+    - Legacy (no version or older): use legacy method (for backward compat with v1.7.3 receipts)
+    - If expected_hash is None, uses receipt.get("hash")
+
+    Important: the 'hash' field itself (if present) is zeroed before hashing,
+    matching how make_receipt and session compute it (hash of content with hash="").
+    """
+    if expected_hash is None:
+        expected_hash = receipt.get("hash")
+        if expected_hash is None:
+            return False
+
+    # Exclude integrity fields (hash, chain_hash, merkle_root) from canonical content.
+    # These are computed from the core receipt.
+    to_hash = {k: v for k, v in receipt.items() if k not in ("hash", "chain_hash", "merkle_root")}
+
+    version = receipt.get("canonical_version")  # version from original
+    if version == "1.0":
+        canon_bytes = canonicalize(to_hash)
+    else:
+        # legacy path for migration
+        canon_bytes = _legacy_receipt_hash_bytes(to_hash)
+
+    computed = hashlib.sha256(canon_bytes).hexdigest()
+    return computed == expected_hash
 
 
 def make_receipt(
@@ -74,9 +142,12 @@ def make_receipt(
         A dict with all receipt fields and a SHA-256 hash.
     """
     payload = user_message + assistant_response
+    ts = time.time()
+    # RFC3339 with nanosecond precision (padded)
+    timestamp = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ts)) + f".{int((ts % 1) * 1_000_000_000):09d}Z"
     receipt = {
-        "exchange_id": hashlib.sha256((payload + str(time.time())).encode()).hexdigest()[:16],
-        "timestamp": time.time(),
+        "exchange_id": hashlib.sha256((payload + str(ts)).encode()).hexdigest()[:16],
+        "timestamp": timestamp,
         "model": model,
         "constitutional_prompt": constitutional_prompt,
         "user_message": user_message,
@@ -86,9 +157,9 @@ def make_receipt(
         "drift_method": drift_method,
         "temperature": temperature,
         "cedar": cedar_status or {"active": False, "status": "not_configured", "error": None},
-        "hash": "",
     }
-    # Self-hash: the receipt seals itself
+    receipt["canonical_version"] = "1.0"
+    # Self-hash: the receipt seals itself (hash field is NOT part of the canonical content)
     receipt_hash = hashlib.sha256(receipt_hash_bytes(receipt)).hexdigest()
     receipt["hash"] = receipt_hash
     return receipt

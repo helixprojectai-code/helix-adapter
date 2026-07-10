@@ -28,7 +28,33 @@ from helix_adapter import (
     InMemoryReceiptStore,
     JointReceipt,
     SQLiteReceiptStore,
+    canonicalize,
 )
+
+import hashlib
+
+def make_test_receipt(**overrides):
+    """Create a minimal valid receipt that passes verify_receipt (v1.0 canonical)."""
+    r = {
+        "exchange_id": "ex1",
+        "session_id": "s1",
+        "turn": 0,
+        "timestamp": "2026-06-29T00:00:00.000000000Z",
+        "drift_score": 0.05,
+        "drift_tier": "green",
+        "user_message": "hi",
+        "assistant_response": "hello",
+        "claims": [],
+        "model": "test",
+        "canonical_version": "1.0",
+        "hash": "",
+        "chain_hash": "c1",
+    }
+    r.update(overrides)
+    # ensure hash matches current canonical (exclude integrity fields)
+    core = {k: v for k, v in r.items() if k not in ("hash", "chain_hash", "merkle_root")}
+    r["hash"] = hashlib.sha256(canonicalize(core)).hexdigest()
+    return r
 
 # ─────────────────────────────────────────────
 # Fixtures
@@ -138,20 +164,7 @@ class TestDriftThreshold:
 
 class TestInMemoryReceiptStore:
     def test_save_and_get(self, mem_store):
-        receipt = {
-            "exchange_id": "ex1",
-            "session_id": "s1",
-            "turn": 0,
-            "timestamp": "2026-06-29",
-            "hash": "h1",
-            "chain_hash": "c1",
-            "drift_score": 0.05,
-            "drift_tier": "green",
-            "user_message": "hi",
-            "assistant_response": "hello",
-            "claims": [],
-            "model": "test",
-        }
+        receipt = make_test_receipt()
         mem_store.save(receipt)
         result = mem_store.get_session("s1")
         assert len(result) == 1
@@ -160,16 +173,13 @@ class TestInMemoryReceiptStore:
     def test_multiple_turns_ordered(self, mem_store):
         for i in range(5):
             mem_store.save(
-                {
-                    "exchange_id": f"ex{i}",
-                    "session_id": "s1",
-                    "turn": i,
-                    "timestamp": "t",
-                    "hash": f"h{i}",
-                    "chain_hash": f"c{i}",
-                    "drift_score": 0.0,
-                    "drift_tier": "green",
-                }
+                make_test_receipt(
+                    exchange_id=f"ex{i}",
+                    turn=i,
+                    timestamp="t",
+                    chain_hash=f"c{i}",
+                    drift_score=0.0,
+                )
             )
         results = mem_store.get_session("s1")
         turns = [r["turn"] for r in results]
@@ -178,28 +188,14 @@ class TestInMemoryReceiptStore:
     def test_list_sessions(self, mem_store):
         for sid in ["s1", "s2", "s3"]:
             mem_store.save(
-                {
-                    "exchange_id": sid,
-                    "session_id": sid,
-                    "turn": 0,
-                    "timestamp": "t",
-                    "hash": "h",
-                    "chain_hash": "c",
-                }
+                make_test_receipt(session_id=sid, exchange_id=sid)
             )
         sessions = mem_store.list_sessions()
         assert set(sessions) == {"s1", "s2", "s3"}
 
     def test_delete_session(self, mem_store):
         mem_store.save(
-            {
-                "exchange_id": "ex1",
-                "session_id": "s1",
-                "turn": 0,
-                "timestamp": "t",
-                "hash": "h",
-                "chain_hash": "c",
-            }
+            make_test_receipt()
         )
         mem_store.delete_session("s1")
         assert mem_store.get_session("s1") == []
@@ -214,14 +210,7 @@ class TestInMemoryReceiptStore:
     def test_export_jsonl(self, mem_store):
         for i in range(3):
             mem_store.save(
-                {
-                    "exchange_id": f"e{i}",
-                    "session_id": "s1",
-                    "turn": i,
-                    "timestamp": "t",
-                    "hash": "h",
-                    "chain_hash": "c",
-                }
+                make_test_receipt(exchange_id=f"e{i}", turn=i, timestamp="t")
             )
         export = mem_store.export_session("s1", fmt="jsonl")
         lines = [ln for ln in export.splitlines() if ln.strip()]
@@ -231,14 +220,7 @@ class TestInMemoryReceiptStore:
 
     def test_export_json(self, mem_store):
         mem_store.save(
-            {
-                "exchange_id": "e1",
-                "session_id": "s1",
-                "turn": 0,
-                "timestamp": "t",
-                "hash": "h",
-                "chain_hash": "c",
-            }
+            make_test_receipt(exchange_id="e1")
         )
         export = mem_store.export_session("s1", fmt="json")
         data = json.loads(export)
@@ -247,24 +229,10 @@ class TestInMemoryReceiptStore:
 
     def test_multiple_sessions_isolated(self, mem_store):
         mem_store.save(
-            {
-                "exchange_id": "a1",
-                "session_id": "A",
-                "turn": 0,
-                "timestamp": "t",
-                "hash": "h",
-                "chain_hash": "c",
-            }
+            make_test_receipt(session_id="A", exchange_id="a1")
         )
         mem_store.save(
-            {
-                "exchange_id": "b1",
-                "session_id": "B",
-                "turn": 0,
-                "timestamp": "t",
-                "hash": "h",
-                "chain_hash": "c",
-            }
+            make_test_receipt(session_id="B", exchange_id="b1")
         )
         assert len(mem_store.get_session("A")) == 1
         assert len(mem_store.get_session("B")) == 1
@@ -280,20 +248,7 @@ class TestInMemoryReceiptStore:
 
 class TestSQLiteReceiptStore:
     def test_save_and_get(self, sql_store):
-        receipt = {
-            "exchange_id": "ex1",
-            "session_id": "s1",
-            "turn": 0,
-            "timestamp": "2026-06-29",
-            "hash": "h1",
-            "chain_hash": "c1",
-            "drift_score": 0.05,
-            "drift_tier": "green",
-            "user_message": "hi",
-            "assistant_response": "hello",
-            "claims": [],
-            "model": "test",
-        }
+        receipt = make_test_receipt()
         sql_store.save(receipt)
         result = sql_store.get_session("s1")
         assert len(result) == 1
@@ -302,16 +257,7 @@ class TestSQLiteReceiptStore:
     def test_persistence(self, db_path):
         store1 = SQLiteReceiptStore(path=db_path)
         store1.save(
-            {
-                "exchange_id": "ex1",
-                "session_id": "s1",
-                "turn": 0,
-                "timestamp": "t",
-                "hash": "h",
-                "chain_hash": "c",
-                "drift_score": 0.1,
-                "drift_tier": "yellow",
-            }
+            make_test_receipt(drift_score=0.1, drift_tier="yellow")
         )
         # Re-open same DB
         store2 = SQLiteReceiptStore(path=db_path)
@@ -322,16 +268,13 @@ class TestSQLiteReceiptStore:
     def test_multiple_turns_ordered(self, sql_store):
         for i in range(5):
             sql_store.save(
-                {
-                    "exchange_id": f"ex{i}",
-                    "session_id": "s1",
-                    "turn": i,
-                    "timestamp": "t",
-                    "hash": f"h{i}",
-                    "chain_hash": f"c{i}",
-                    "drift_score": 0.0,
-                    "drift_tier": "green",
-                }
+                make_test_receipt(
+                    exchange_id=f"ex{i}",
+                    turn=i,
+                    timestamp="t",
+                    chain_hash=f"c{i}",
+                    drift_score=0.0,
+                )
             )
         results = sql_store.get_session("s1")
         turns = [r["turn"] for r in results]
@@ -340,32 +283,14 @@ class TestSQLiteReceiptStore:
     def test_list_sessions(self, sql_store):
         for sid in ["s1", "s2", "s3"]:
             sql_store.save(
-                {
-                    "exchange_id": sid,
-                    "session_id": sid,
-                    "turn": 0,
-                    "timestamp": "t",
-                    "hash": "h",
-                    "chain_hash": "c",
-                    "drift_score": 0.0,
-                    "drift_tier": "green",
-                }
+                make_test_receipt(session_id=sid, exchange_id=sid)
             )
         sessions = sql_store.list_sessions()
         assert set(sessions) == {"s1", "s2", "s3"}
 
     def test_delete_session(self, sql_store):
         sql_store.save(
-            {
-                "exchange_id": "ex1",
-                "session_id": "s1",
-                "turn": 0,
-                "timestamp": "t",
-                "hash": "h",
-                "chain_hash": "c",
-                "drift_score": 0.0,
-                "drift_tier": "green",
-            }
+            make_test_receipt()
         )
         sql_store.delete_session("s1")
         assert sql_store.get_session("s1") == []
@@ -373,34 +298,20 @@ class TestSQLiteReceiptStore:
     def test_export_jsonl(self, sql_store):
         for i in range(3):
             sql_store.save(
-                {
-                    "exchange_id": f"e{i}",
-                    "session_id": "s1",
-                    "turn": i,
-                    "timestamp": "t",
-                    "hash": "h",
-                    "chain_hash": "c",
-                    "drift_score": 0.0,
-                    "drift_tier": "green",
-                }
+                make_test_receipt(
+                    exchange_id=f"e{i}",
+                    turn=i,
+                    timestamp="t",
+                )
             )
         export = sql_store.export_session("s1", fmt="jsonl")
         lines = [ln for ln in export.splitlines() if ln.strip()]
         assert len(lines) == 3
 
     def test_upsert_same_exchange_id(self, sql_store):
-        r = {
-            "exchange_id": "ex1",
-            "session_id": "s1",
-            "turn": 0,
-            "timestamp": "t",
-            "hash": "h1",
-            "chain_hash": "c1",
-            "drift_score": 0.0,
-            "drift_tier": "green",
-        }
+        r = make_test_receipt()
         sql_store.save(r)
-        r["hash"] = "h2"
+        r = make_test_receipt(hash="h2")  # new hash for upsert
         sql_store.save(r)  # should not raise, upsert
         assert len(sql_store.get_session("s1")) == 1
 
@@ -413,16 +324,12 @@ class TestSQLiteReceiptStore:
 @pytest.mark.parametrize("store_fixture", ["mem_store", "sql_store"])
 class TestStoreContract:
     def _receipt(self, sid, turn, eid=None):
-        return {
-            "exchange_id": eid or f"{sid}-{turn}",
-            "session_id": sid,
-            "turn": turn,
-            "timestamp": "t",
-            "hash": f"h{turn}",
-            "chain_hash": f"c{turn}",
-            "drift_score": 0.0,
-            "drift_tier": "green",
-        }
+        return make_test_receipt(
+            session_id=sid,
+            exchange_id=eid or f"{sid}-{turn}",
+            turn=turn,
+            timestamp="t",
+        )
 
     def test_empty_store(self, store_fixture, request):
         store = request.getfixturevalue(store_fixture)
@@ -797,12 +704,18 @@ class TestJointReceipt:
             "cedar_policy_hash",
             "cedar_reason",
             "cedar_status",
+            "canonical_version",
+            "routing_decision",
+            "routing_matched_policy",
+            "routing_policy_version",
             "hash",
             "chain_hash",
         ]
         d = r.to_dict()
         for field in required:
             assert field in d, f"Missing field: {field}"
+        assert d["canonical_version"] == "1.0"
+        assert d.get("routing_decision") is None  # populated at Foundry layer for routed sessions
 
     def test_user_message_stored(self, session_mem):
         r = session_mem.send("What is drift?")

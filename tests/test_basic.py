@@ -57,6 +57,7 @@ def test_receipt_has_hash():
     assert "exchange_id" in receipt
     assert receipt["model"] == "test-model"
     assert len(receipt["hash"]) == 64  # SHA-256 hex
+    assert receipt.get("canonical_version") == "1.0"
 
 
 def test_drift_perfect():
@@ -101,3 +102,114 @@ def test_prompt_contains_constraints():
     assert "NO AGENCY" in CONSTITUTIONAL_PROMPT
     assert "ABSTENTION AS COMPETENCE" in CONSTITUTIONAL_PROMPT
     assert "EPISTEMIC MARKERS" in CONSTITUTIONAL_PROMPT
+
+
+def test_receipt_canonicalization_spec_v1_0():
+    """Test vectors + verifier for RECEIPT CANONICALIZATION SPEC v1.0."""
+    from helix_adapter import canonicalize, receipt_hash_bytes, verify_receipt
+
+    # Known test vectors (generated via current canonicalize implementation)
+    TEST_VECTORS = [
+        {
+            "name": "simple",
+            "data": {
+                "turn": 5,
+                "drift_score": 0.1234,
+                "message": "café",
+                "nested": {"z": None, "a": 1},
+                "arr": [3, 1, 2],
+                "timestamp": "2026-07-10T12:00:00.123456789Z",
+                "canonical_version": "1.0",
+            },
+            "expected_json": "{\"arr\":[3,1,2],\"canonical_version\":\"1.0\",\"drift_score\":\"0.1234\",\"message\":\"café\",\"nested\":{\"a\":1,\"z\":null},\"timestamp\":\"2026-07-10T12:00:00.123456789Z\",\"turn\":5}",
+            "expected_hash": "eab4431530d60033211a9d3149594c4eafa25308f740343ccd2583354ae56a77",
+        },
+        {
+            "name": "empty",
+            "data": {
+                "empty_dict": {},
+                "empty_list": [],
+                "null_val": None,
+                "canonical_version": "1.0",
+            },
+            "expected_json": "{\"canonical_version\":\"1.0\",\"empty_dict\":{},\"empty_list\":[],\"null_val\":null}",
+            "expected_hash": "cec81988cc17039ebd373de6ce0ee18a3574e070dec2d82c7ca3d8521e7056ff",
+        },
+        {
+            "name": "unicode_sort",
+            "data": {
+                "z_key": 1,
+                "a_key": 2,
+                "café": "value",
+                "canonical_version": "1.0",
+            },
+            "expected_json": "{\"a_key\":2,\"café\":\"value\",\"canonical_version\":\"1.0\",\"z_key\":1}",
+            "expected_hash": "04fffac00ebf8087caa8e1faa278bab42cdc0ff6c188488fb6b58f0f2f8d979a",
+        },
+    ]
+
+    import hashlib  # for legacy test
+
+    for vec in TEST_VECTORS:
+        canon = canonicalize(vec["data"])
+        canon_str = canon.decode("utf-8")
+        full_hash = hashlib.sha256(canon).hexdigest()
+
+        assert canon_str == vec["expected_json"], f"Canonical JSON mismatch for {vec['name']}"
+        assert full_hash == vec["expected_hash"], f"Hash mismatch for {vec['name']}"
+
+        # Test verifier
+        rec_with_hash = dict(vec["data"])
+        rec_with_hash["hash"] = vec["expected_hash"]
+        assert verify_receipt(rec_with_hash) is True
+        assert verify_receipt(rec_with_hash, vec["expected_hash"]) is True
+
+        # Wrong hash should fail
+        assert verify_receipt(rec_with_hash, "deadbeef" * 8) is False
+
+    # Legacy (no canonical_version) uses legacy hash path
+    from helix_adapter.receipt import _legacy_receipt_hash_bytes
+    legacy_data = {"foo": "bar", "timestamp": "2026-01-01T00:00:00Z"}
+    legacy_canon = _legacy_receipt_hash_bytes(legacy_data)
+    legacy_hash = hashlib.sha256(legacy_canon).hexdigest()
+    legacy_rec = dict(legacy_data)
+    legacy_rec["hash"] = legacy_hash
+    assert verify_receipt(legacy_rec) is True
+    assert verify_receipt(legacy_rec, legacy_hash) is True
+
+    # Also verify via JointReceipt path
+    from helix_adapter import JointReceipt
+    jr_data = {
+        "exchange_id": "ex123",
+        "session_id": "sess1",
+        "turn": 0,
+        "timestamp": "2026-07-10T12:00:00.000000000Z",
+        "model": "test",
+        "user_message": "hi",
+        "assistant_response": "[FACT] hi.",
+        "claims": [{"label": "FACT", "text": "hi."}],
+        "drift_score": 0.0,
+        "drift_tier": "green",
+        "drift_method": "char",
+        "cedar_action": None,
+        "cedar_authorized": None,
+        "cedar_policy_hash": None,
+        "cedar_reason": None,
+        "cedar_status": "not_configured",
+        "canonical_version": "1.0",
+        "merkle_root": None,
+        "routing_decision": None,
+        "routing_matched_policy": None,
+        "routing_policy_version": None,
+    }
+    # Compute hash from core content (excluding integrity fields that are added later)
+    core_for_hash = {k: v for k, v in jr_data.items() if k not in ('hash', 'chain_hash', 'merkle_root')}
+    jr_canon = canonicalize(core_for_hash)
+    jr_hash = hashlib.sha256(jr_canon).hexdigest()
+    jr = JointReceipt(**jr_data, hash=jr_hash, chain_hash="c1")
+    actual_dict = jr.to_dict()
+    # verify should succeed even with extra integrity fields present
+    assert verify_receipt(actual_dict) is True
+    assert verify_receipt(actual_dict, jr_hash) is True
+
+    print("All canonicalization test vectors + verifier checks passed")

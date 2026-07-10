@@ -69,6 +69,10 @@ class JointReceipt:
 
     Seals both Duck Gate (drift, claims) and Cedar Gate (action decision)
     in one receipt, chained to all prior turns via chain_hash.
+
+    Per RECEIPT CANONICALIZATION SPEC v1.0, new receipts include
+    canonical_version and are hashed using canonical serialization
+    (NFC, sorted keys, zero ws, fixed-precision strings for floats).
     """
 
     exchange_id: str
@@ -96,6 +100,14 @@ class JointReceipt:
     hash: str
     chain_hash: str
     merkle_root: Optional[str] = None
+
+    # Canonicalization (RECEIPT CANONICALIZATION SPEC v1.0)
+    canonical_version: Optional[str] = None
+
+    # Routing decision (for explicability / three-field schema in v1.7.4+)
+    routing_decision: Optional[str] = None
+    routing_matched_policy: Optional[str] = None
+    routing_policy_version: Optional[str] = None
 
     def to_dict(self) -> dict:
         import dataclasses
@@ -212,7 +224,8 @@ class HelixSession:
             (self.session_id + str(self._turn) + str(time.time())).encode()
         ).hexdigest()[:16]
 
-        timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        ts = time.time()
+        timestamp = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ts)) + f".{int((ts % 1) * 1_000_000_000):09d}Z"
 
         receipt_body = {
             "exchange_id": exchange_id,
@@ -231,6 +244,10 @@ class HelixSession:
             "cedar_policy_hash": cedar_policy_hash,
             "cedar_reason": None,
             "cedar_status": cedar_status,
+            "canonical_version": "1.0",
+            "routing_decision": None,
+            "routing_matched_policy": None,
+            "routing_policy_version": None,
         }
 
         # Self-hash
