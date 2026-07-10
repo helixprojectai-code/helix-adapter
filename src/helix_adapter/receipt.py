@@ -157,8 +157,8 @@ def make_receipt(
         "drift_method": drift_method,
         "temperature": temperature,
         "cedar": cedar_status or {"active": False, "status": "not_configured", "error": None},
-        "canonical_version": "1.0",
     }
+    receipt["canonical_version"] = "1.0"
     # Self-hash: the receipt seals itself (hash field is NOT part of the canonical content)
     receipt_hash = hashlib.sha256(receipt_hash_bytes(receipt)).hexdigest()
     receipt["hash"] = receipt_hash
