@@ -245,6 +245,9 @@ class HelixSession:
             "cedar_reason": None,
             "cedar_status": cedar_status,
             "canonical_version": "1.0",
+            "routing_decision": None,
+            "routing_matched_policy": None,
+            "routing_policy_version": None,
         }
 
         # Self-hash

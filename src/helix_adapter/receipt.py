@@ -76,6 +76,44 @@ def receipt_hash_bytes(receipt: dict) -> bytes:
     return canonicalize(receipt)
 
 
+def _legacy_receipt_hash_bytes(receipt: dict) -> bytes:
+    """Legacy (pre-v1.7.4) hash bytes: NFC + sort_keys but with default whitespace.
+    Used only for verifying legacy receipts that lack canonical_version.
+    """
+    return json.dumps(_nfc(receipt), sort_keys=True, default=str).encode("utf-8")
+
+
+def verify_receipt(receipt: dict, expected_hash: str | None = None) -> bool:
+    """Verify a receipt's hash using the canonicalization appropriate for its version.
+
+    Per RECEIPT CANONICALIZATION SPEC v1.0:
+    - If canonical_version == "1.0": use canonicalize() then SHA256
+    - Legacy (no version or older): use legacy method (for backward compat with v1.7.3 receipts)
+    - If expected_hash is None, uses receipt.get("hash")
+
+    Important: the 'hash' field itself (if present) is zeroed before hashing,
+    matching how make_receipt and session compute it (hash of content with hash="").
+    """
+    if expected_hash is None:
+        expected_hash = receipt.get("hash")
+        if expected_hash is None:
+            return False
+
+    # Exclude integrity fields (hash, chain_hash, merkle_root) from canonical content.
+    # These are computed from the core receipt.
+    to_hash = {k: v for k, v in receipt.items() if k not in ("hash", "chain_hash", "merkle_root")}
+
+    version = receipt.get("canonical_version")  # version from original
+    if version == "1.0":
+        canon_bytes = canonicalize(to_hash)
+    else:
+        # legacy path for migration
+        canon_bytes = _legacy_receipt_hash_bytes(to_hash)
+
+    computed = hashlib.sha256(canon_bytes).hexdigest()
+    return computed == expected_hash
+
+
 def make_receipt(
     user_message: str,
     assistant_response: str,
@@ -120,9 +158,8 @@ def make_receipt(
         "temperature": temperature,
         "cedar": cedar_status or {"active": False, "status": "not_configured", "error": None},
         "canonical_version": "1.0",
-        "hash": "",
     }
-    # Self-hash: the receipt seals itself
+    # Self-hash: the receipt seals itself (hash field is NOT part of the canonical content)
     receipt_hash = hashlib.sha256(receipt_hash_bytes(receipt)).hexdigest()
     receipt["hash"] = receipt_hash
     return receipt

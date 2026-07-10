@@ -15,6 +15,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Added `RELEASE_NOTES_1.7.4.md` and updated README, pyproject.toml to 1.7.4.
 - **Receipt Schema Stability (critical hardening).** `cedar_route()` and all routing surfaces (routed-chat, session start/send, ledgers, meta) now return categorical `decision`, `matched_policy`, and `policy_version` alongside `policy_hash`. Enables human-auditable routing decisions without weakening cryptographic receipts. See Shape Bureau Vector 1.
 - **Receipt Canonicalization Spec v1.0 (Vector 5).** Full implementation of deterministic canonical form for all receipts before hashing: lex-sorted keys, NFC strings, zero whitespace, floats as fixed-precision strings, RFC3339-nano timestamps. `canonical_version: "1.0"` added to JointReceipt and basic receipts. `receipt_hash_bytes()` and `canonicalize()` now enforce the spec. Eliminates cross-platform hash drift. Migration: pre-1.7.4 receipts valid without the field.
+- **Verification wired into Stores/Exports.** `verify_receipt()` is now called automatically during `save()` (disk-writes) and `export_session()` (JSON/JSONL network exports) in both store implementations. `get_session()` now verifies once per process lifetime per session (cached in memory afterward) to detect at-rest tampering. This turns the custody layer into an active automated daemon.
 - Initial integration of Shape Bureau hardening roadmap items (receipt schema enrichment, canonical serialization groundwork) from the v1.7.4 spec drop.
 
 ### Notes

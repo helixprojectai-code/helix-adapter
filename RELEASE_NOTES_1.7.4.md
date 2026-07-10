@@ -80,6 +80,17 @@ This eliminates serialization drift across platforms and languages.
 - Used for both `hash` and `chain_hash` computations.
 - Timestamps in receipts now include nanosecond precision.
 
+### Verification wired into Stores & Exports
+
+`verify_receipt()` is now automatically called:
+- In `InMemoryReceiptStore.save()` and `SQLiteReceiptStore.save()` (active check on every disk/memory write).
+- In `ReceiptStore.export_session()` (before producing JSON/JSONL for network exports).
+- In `get_session()` (once per process lifetime per session — "verify once per boot, trust memory after"). Subsequent loads return from an in-memory cache. This detects at-rest tampering (direct edits to the SQLite file) on first access.
+
+Invalid (tampered or non-canonical) receipts now raise `ValueError` at these boundaries, turning the Tamper-Evident Custody Layer into an active, automated daemon (Class-β storage protocol).
+
+See `store.py` and the Shape Bureau roadmap.
+
 ---
 
 ## Upgrade
