@@ -31,7 +31,6 @@ from helix_adapter import (
     canonicalize,
 )
 
-import hashlib
 
 def make_test_receipt(**overrides):
     """Create a minimal valid receipt that passes verify_receipt (v1.0 canonical)."""
@@ -55,6 +54,7 @@ def make_test_receipt(**overrides):
     core = {k: v for k, v in r.items() if k not in ("hash", "chain_hash", "merkle_root")}
     r["hash"] = hashlib.sha256(canonicalize(core)).hexdigest()
     return r
+
 
 # ─────────────────────────────────────────────
 # Fixtures
@@ -187,16 +187,12 @@ class TestInMemoryReceiptStore:
 
     def test_list_sessions(self, mem_store):
         for sid in ["s1", "s2", "s3"]:
-            mem_store.save(
-                make_test_receipt(session_id=sid, exchange_id=sid)
-            )
+            mem_store.save(make_test_receipt(session_id=sid, exchange_id=sid))
         sessions = mem_store.list_sessions()
         assert set(sessions) == {"s1", "s2", "s3"}
 
     def test_delete_session(self, mem_store):
-        mem_store.save(
-            make_test_receipt()
-        )
+        mem_store.save(make_test_receipt())
         mem_store.delete_session("s1")
         assert mem_store.get_session("s1") == []
         assert "s1" not in mem_store.list_sessions()
@@ -209,9 +205,7 @@ class TestInMemoryReceiptStore:
 
     def test_export_jsonl(self, mem_store):
         for i in range(3):
-            mem_store.save(
-                make_test_receipt(exchange_id=f"e{i}", turn=i, timestamp="t")
-            )
+            mem_store.save(make_test_receipt(exchange_id=f"e{i}", turn=i, timestamp="t"))
         export = mem_store.export_session("s1", fmt="jsonl")
         lines = [ln for ln in export.splitlines() if ln.strip()]
         assert len(lines) == 3
@@ -219,21 +213,15 @@ class TestInMemoryReceiptStore:
             json.loads(line)  # each line is valid JSON
 
     def test_export_json(self, mem_store):
-        mem_store.save(
-            make_test_receipt(exchange_id="e1")
-        )
+        mem_store.save(make_test_receipt(exchange_id="e1"))
         export = mem_store.export_session("s1", fmt="json")
         data = json.loads(export)
         assert isinstance(data, list)
         assert len(data) == 1
 
     def test_multiple_sessions_isolated(self, mem_store):
-        mem_store.save(
-            make_test_receipt(session_id="A", exchange_id="a1")
-        )
-        mem_store.save(
-            make_test_receipt(session_id="B", exchange_id="b1")
-        )
+        mem_store.save(make_test_receipt(session_id="A", exchange_id="a1"))
+        mem_store.save(make_test_receipt(session_id="B", exchange_id="b1"))
         assert len(mem_store.get_session("A")) == 1
         assert len(mem_store.get_session("B")) == 1
         mem_store.delete_session("A")
@@ -256,9 +244,7 @@ class TestSQLiteReceiptStore:
 
     def test_persistence(self, db_path):
         store1 = SQLiteReceiptStore(path=db_path)
-        store1.save(
-            make_test_receipt(drift_score=0.1, drift_tier="yellow")
-        )
+        store1.save(make_test_receipt(drift_score=0.1, drift_tier="yellow"))
         # Re-open same DB
         store2 = SQLiteReceiptStore(path=db_path)
         result = store2.get_session("s1")
@@ -282,16 +268,12 @@ class TestSQLiteReceiptStore:
 
     def test_list_sessions(self, sql_store):
         for sid in ["s1", "s2", "s3"]:
-            sql_store.save(
-                make_test_receipt(session_id=sid, exchange_id=sid)
-            )
+            sql_store.save(make_test_receipt(session_id=sid, exchange_id=sid))
         sessions = sql_store.list_sessions()
         assert set(sessions) == {"s1", "s2", "s3"}
 
     def test_delete_session(self, sql_store):
-        sql_store.save(
-            make_test_receipt()
-        )
+        sql_store.save(make_test_receipt())
         sql_store.delete_session("s1")
         assert sql_store.get_session("s1") == []
 

@@ -8,6 +8,7 @@ version = "1.7.4"
 description = "Portable constitutional adapter for any LLM. Forces epistemic markers, real-time drift detection, and tamper-evident receipts."
 readme = "README.md"
 license = {text = "Apache-2.0"}
+requires-python = ">=3.12"
 authors = [
     {name = "Stephen Hope"},
 ]
@@ -25,8 +26,6 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Libraries :: Python Modules",
@@ -55,7 +54,7 @@ where = ["src"]
 
 [tool.black]
 line-length = 100
-target-version = ["py310"]
+target-version = ["py312"]
 extend-exclude = '''
 /(
   \.eggs
@@ -68,7 +67,7 @@ extend-exclude = '''
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py312"
 exclude = [".git", ".venv", "build", "dist"]
 
 [tool.ruff.lint]

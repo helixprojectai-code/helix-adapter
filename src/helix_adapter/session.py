@@ -225,7 +225,10 @@ class HelixSession:
         ).hexdigest()[:16]
 
         ts = time.time()
-        timestamp = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ts)) + f".{int((ts % 1) * 1_000_000_000):09d}Z"
+        timestamp = (
+            time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ts))
+            + f".{int((ts % 1) * 1_000_000_000):09d}Z"
+        )
 
         receipt_body = {
             "exchange_id": exchange_id,

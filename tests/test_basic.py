@@ -106,7 +106,7 @@ def test_prompt_contains_constraints():
 
 def test_receipt_canonicalization_spec_v1_0():
     """Test vectors + verifier for RECEIPT CANONICALIZATION SPEC v1.0."""
-    from helix_adapter import canonicalize, receipt_hash_bytes, verify_receipt
+    from helix_adapter import canonicalize, verify_receipt
 
     # Known test vectors (generated via current canonicalize implementation)
     TEST_VECTORS = [
@@ -121,7 +121,7 @@ def test_receipt_canonicalization_spec_v1_0():
                 "timestamp": "2026-07-10T12:00:00.123456789Z",
                 "canonical_version": "1.0",
             },
-            "expected_json": "{\"arr\":[3,1,2],\"canonical_version\":\"1.0\",\"drift_score\":\"0.1234\",\"message\":\"café\",\"nested\":{\"a\":1,\"z\":null},\"timestamp\":\"2026-07-10T12:00:00.123456789Z\",\"turn\":5}",
+            "expected_json": '{"arr":[3,1,2],"canonical_version":"1.0","drift_score":"0.1234","message":"café","nested":{"a":1,"z":null},"timestamp":"2026-07-10T12:00:00.123456789Z","turn":5}',  # noqa: E501
             "expected_hash": "eab4431530d60033211a9d3149594c4eafa25308f740343ccd2583354ae56a77",
         },
         {
@@ -132,7 +132,7 @@ def test_receipt_canonicalization_spec_v1_0():
                 "null_val": None,
                 "canonical_version": "1.0",
             },
-            "expected_json": "{\"canonical_version\":\"1.0\",\"empty_dict\":{},\"empty_list\":[],\"null_val\":null}",
+            "expected_json": '{"canonical_version":"1.0","empty_dict":{},"empty_list":[],"null_val":null}',  # noqa: E501
             "expected_hash": "cec81988cc17039ebd373de6ce0ee18a3574e070dec2d82c7ca3d8521e7056ff",
         },
         {
@@ -143,7 +143,7 @@ def test_receipt_canonicalization_spec_v1_0():
                 "café": "value",
                 "canonical_version": "1.0",
             },
-            "expected_json": "{\"a_key\":2,\"café\":\"value\",\"canonical_version\":\"1.0\",\"z_key\":1}",
+            "expected_json": '{"a_key":2,"café":"value","canonical_version":"1.0","z_key":1}',
             "expected_hash": "04fffac00ebf8087caa8e1faa278bab42cdc0ff6c188488fb6b58f0f2f8d979a",
         },
     ]
@@ -169,6 +169,7 @@ def test_receipt_canonicalization_spec_v1_0():
 
     # Legacy (no canonical_version) uses legacy hash path
     from helix_adapter.receipt import _legacy_receipt_hash_bytes
+
     legacy_data = {"foo": "bar", "timestamp": "2026-01-01T00:00:00Z"}
     legacy_canon = _legacy_receipt_hash_bytes(legacy_data)
     legacy_hash = hashlib.sha256(legacy_canon).hexdigest()
@@ -179,6 +180,7 @@ def test_receipt_canonicalization_spec_v1_0():
 
     # Also verify via JointReceipt path
     from helix_adapter import JointReceipt
+
     jr_data = {
         "exchange_id": "ex123",
         "session_id": "sess1",
@@ -203,7 +205,9 @@ def test_receipt_canonicalization_spec_v1_0():
         "routing_policy_version": None,
     }
     # Compute hash from core content (excluding integrity fields that are added later)
-    core_for_hash = {k: v for k, v in jr_data.items() if k not in ('hash', 'chain_hash', 'merkle_root')}
+    core_for_hash = {
+        k: v for k, v in jr_data.items() if k not in ("hash", "chain_hash", "merkle_root")
+    }
     jr_canon = canonicalize(core_for_hash)
     jr_hash = hashlib.sha256(jr_canon).hexdigest()
     jr = JointReceipt(**jr_data, hash=jr_hash, chain_hash="c1")

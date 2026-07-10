@@ -18,6 +18,33 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - **Verification wired into Stores/Exports.** `verify_receipt()` is now called automatically during `save()` (disk-writes) and `export_session()` (JSON/JSONL network exports) in both store implementations. `get_session()` now verifies once per process lifetime per session (cached in memory afterward) to detect at-rest tampering. This turns the custody layer into an active automated daemon.
 - Initial integration of Shape Bureau hardening roadmap items (receipt schema enrichment, canonical serialization groundwork) from the v1.7.4 spec drop.
 
+### Fixed (WIP, 2026-07-10 post-merge — test suite hardening & misc catches)
+
+- **Critical: `foundry.py` had a syntax error on main.** `cedar_route()`'s
+  docstring was missing its closing `"""`, swallowing ~140 lines of real
+  routing logic into an inert string literal — the entire file failed to
+  parse. Not deployed (helix2vm2's live server was unaffected), but broken
+  on `main`. Fixed with the closing quote restored.
+- **Closed the test-coverage gap that let it ship.** `foundry.py` had zero
+  test coverage (it's a standalone script, outside pytest's default
+  collection) and there was no CI workflow running `pytest` at all —
+  only lint (ruff+black) existed, and it *did* correctly fail on this
+  commit, but the PR merged anyway. Added `tests/test_foundry_syntax.py`
+  (zero-dependency AST-parse + config validation, runs everywhere) and
+  `tests/test_foundry.py` (functional tests behind an `importorskip` for
+  the `widget` extra), plus a new `.github/workflows/test.yml`.
+- **Missing `requires-python` constraint.** `pyproject.toml` claimed
+  3.10/3.11/3.12 support via classifiers but had no `requires-python` at
+  all. Verified all 3 published `cedar_python` versions (a required dep)
+  need ≥3.12 — the package was never actually installable below that.
+  Added `requires-python = ">=3.12"`, trimmed classifiers, bumped
+  black/ruff `target-version` to `py312`, fixed both CI workflows to
+  match (the new test workflow initially failed for exactly this reason).
+- Cleaned up pre-existing lint failures inherited from the build-dev
+  merge itself (long lines, an unused import, a duplicate import).
+  Independently re-verified the two new canonicalization test vectors'
+  hashes by hand before suppressing their necessarily-long lines.
+
 ### Notes
 
 - Core behavior (Duck Gate, Cedar Gate, receipts, sessions) unchanged.

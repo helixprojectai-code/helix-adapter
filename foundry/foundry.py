@@ -102,6 +102,7 @@ def cedar_route(context: dict) -> dict:
         }
 
     None-valued fields are dropped before evaluation.
+    """
     context = {k: v for k, v in context.items() if v is not None}
     try:
         from helix_adapter.cedar import CedarPolicy
