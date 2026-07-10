@@ -89,13 +89,19 @@ MODEL_POOLS = list(MODEL_POOL_MAP.keys())
 
 def cedar_route(context: dict) -> dict:
     """Evaluate all ModelPool policies against context. Route to best match.
-    Returns {"model": str, "pool": str, "policy_hash": str, "reason": str}.
 
-    None-valued fields are dropped before evaluation — an omitted optional
-    field (e.g. action_type when the caller didn't specify one) must read as
-    genuinely absent to Cedar's `context has X` checks, not as the literal
-    string "None" (which is what the evaluator's str(v) fallback would
-    otherwise produce for a non-str/int/bool/float value)."""
+    Returns enriched routing decision for receipt schema stability (v1.7.4+):
+        {
+            "model": str,
+            "pool": str,
+            "decision": str,           # categorical routing outcome
+            "matched_policy": str,     # human-readable policy id
+            "policy_hash": str,
+            "policy_version": str,
+            "reason": str,
+        }
+
+    None-valued fields are dropped before evaluation.
     context = {k: v for k, v in context.items() if v is not None}
     try:
         from helix_adapter.cedar import CedarPolicy
@@ -120,7 +126,10 @@ def cedar_route(context: dict) -> dict:
                 return {
                     "model": MODEL_POOL_MAP[pool],
                     "pool": pool,
+                    "decision": pool,
+                    "matched_policy": f"{pool}_pool_v1.7.3",
                     "policy_hash": decision.policy_hash,
+                    "policy_version": "1.7.3",
                     "reason": decision.reason,
                 }
 
@@ -130,7 +139,10 @@ def cedar_route(context: dict) -> dict:
         return {
             "model": model,
             "pool": "static",
+            "decision": "static",
+            "matched_policy": "static_fallback_v1.7.3",
             "policy_hash": "",
+            "policy_version": "1.7.3",
             "reason": "no Cedar policy matched — using static map",
         }
 
@@ -141,7 +153,10 @@ def cedar_route(context: dict) -> dict:
         return {
             "model": model,
             "pool": "static",
+            "decision": "static",
+            "matched_policy": "static_fallback_v1.7.3",
             "policy_hash": "",
+            "policy_version": "1.7.3",
             "reason": "cedar_python unavailable — using static map",
         }
 
@@ -1050,7 +1065,10 @@ async def routed_chat(req: RoutedChatRequest, request: Request, _key: dict = Dep
         "model": route["model"],
         "label": label,
         "pool": route["pool"],
+        "decision": route.get("decision", route["pool"]),
+        "matched_policy": route.get("matched_policy", ""),
         "policy_hash": route["policy_hash"],
+        "policy_version": route.get("policy_version", "1.7.3"),
         "action": req.action,
         "message": req.message[:200],
         "response": result.response[:1000],
@@ -1063,7 +1081,10 @@ async def routed_chat(req: RoutedChatRequest, request: Request, _key: dict = Dep
 
     return {
         "routed_by": "Cedar decision mesh",
+        "decision": route.get("decision", route["pool"]),
+        "matched_policy": route.get("matched_policy", ""),
         "policy_hash": route["policy_hash"],
+        "policy_version": route.get("policy_version", "1.7.3"),
         "pool": route["pool"],
         "model": route["model"],
         "label": label,
@@ -1150,7 +1171,10 @@ async def session_start(
         "model_name": route["model"],
         "label": label,
         "pool": route["pool"],
+        "decision": route.get("decision", route["pool"]),
+        "matched_policy": route.get("matched_policy", ""),
         "policy_hash": route["policy_hash"],
+        "policy_version": route.get("policy_version", "1.7.3"),
         "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
     SESSION_META[session.id] = meta
@@ -1161,7 +1185,10 @@ async def session_start(
         "model": route["model"],
         "label": label,
         "pool": route["pool"],
+        "decision": route.get("decision", route["pool"]),
+        "matched_policy": route.get("matched_policy", ""),
         "policy_hash": route["policy_hash"],
+        "policy_version": route.get("policy_version", "1.7.3"),
     }
 
 
@@ -1188,7 +1215,10 @@ async def session_send(
             "model_name": model_name,
             "label": stored_label,
             "pool": "unknown",
+            "decision": "unknown",
+            "matched_policy": "",
             "policy_hash": "",
+            "policy_version": "1.7.3",
         }
     try:
         session, label, usage = build_session(meta["model_name"], session_id=session_id)
@@ -1209,6 +1239,10 @@ async def session_send(
         "turn": receipt.turn,
         "model": label,
         "pool": meta.get("pool"),
+        "decision": meta.get("decision", meta.get("pool")),
+        "matched_policy": meta.get("matched_policy", ""),
+        "policy_hash": meta.get("policy_hash", ""),
+        "policy_version": meta.get("policy_version", "1.7.3"),
         "response": receipt.assistant_response,
         "claims": receipt.claims,
         "drift_score": receipt.drift_score,

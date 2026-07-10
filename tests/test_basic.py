@@ -57,6 +57,7 @@ def test_receipt_has_hash():
     assert "exchange_id" in receipt
     assert receipt["model"] == "test-model"
     assert len(receipt["hash"]) == 64  # SHA-256 hex
+    assert receipt.get("canonical_version") == "1.0"
 
 
 def test_drift_perfect():

@@ -797,12 +797,14 @@ class TestJointReceipt:
             "cedar_policy_hash",
             "cedar_reason",
             "cedar_status",
+            "canonical_version",
             "hash",
             "chain_hash",
         ]
         d = r.to_dict()
         for field in required:
             assert field in d, f"Missing field: {field}"
+        assert d["canonical_version"] == "1.0"
 
     def test_user_message_stored(self, session_mem):
         r = session_mem.send("What is drift?")

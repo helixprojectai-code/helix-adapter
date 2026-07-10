@@ -2,7 +2,7 @@
 
 # helix-adapter
 
-**Version 1.7.3** · [Release Notes](RELEASE_NOTES_1.7.3.md) · [Changelog](CHANGELOG.md)
+**Version 1.7.4** · [Release Notes](RELEASE_NOTES_1.7.4.md) · [Changelog](CHANGELOG.md)
 
 **Portable constitutional wrapper for any AI model.**
 

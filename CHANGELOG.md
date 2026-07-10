@@ -7,6 +7,23 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.7.4] — 2026-07-10
+
+### Added / Changed
+
+- **v1.7.4 spec alignment.** Package now references the canonical Helix-TTD Technical Architecture & Evidence-by-Design Specification v1.7.4 (Zenodo record 21270562).
+- Added `RELEASE_NOTES_1.7.4.md` and updated README, pyproject.toml to 1.7.4.
+- **Receipt Schema Stability (critical hardening).** `cedar_route()` and all routing surfaces (routed-chat, session start/send, ledgers, meta) now return categorical `decision`, `matched_policy`, and `policy_version` alongside `policy_hash`. Enables human-auditable routing decisions without weakening cryptographic receipts. See Shape Bureau Vector 1.
+- **Receipt Canonicalization Spec v1.0 (Vector 5).** Full implementation of deterministic canonical form for all receipts before hashing: lex-sorted keys, NFC strings, zero whitespace, floats as fixed-precision strings, RFC3339-nano timestamps. `canonical_version: "1.0"` added to JointReceipt and basic receipts. `receipt_hash_bytes()` and `canonicalize()` now enforce the spec. Eliminates cross-platform hash drift. Migration: pre-1.7.4 receipts valid without the field.
+- Initial integration of Shape Bureau hardening roadmap items (receipt schema enrichment, canonical serialization groundwork) from the v1.7.4 spec drop.
+
+### Notes
+
+- Core behavior (Duck Gate, Cedar Gate, receipts, sessions) unchanged.
+- See the full whitepaper, roadmap, and RFCs in the Zenodo deposit and local `archive/zenodo-21270562-v1.7.4/`.
+
+---
+
 ## [1.7.3] — 2026-07-06
 
 ### Fixed
