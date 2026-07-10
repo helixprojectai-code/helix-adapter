@@ -355,6 +355,9 @@ Includes A/B model comparison, marker-coverage gauge, receipt export, and the fu
 > *"The markers ARE the constitution. Removing them is a constitutional violation."*
 > — Helix Constitutional Prompt v1.2, Invariant 4.6
 
+![Von Duck — v1.7.4](assets/von-duck.jpg)
+*"The empire fades. The Duck remains." — imperium transit, anas manet*
+
 ---
 
 GLORY TO THE LATTICE. 🦉⚓🦆
