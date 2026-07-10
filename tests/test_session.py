@@ -798,6 +798,9 @@ class TestJointReceipt:
             "cedar_reason",
             "cedar_status",
             "canonical_version",
+            "routing_decision",
+            "routing_matched_policy",
+            "routing_policy_version",
             "hash",
             "chain_hash",
         ]
@@ -805,6 +808,7 @@ class TestJointReceipt:
         for field in required:
             assert field in d, f"Missing field: {field}"
         assert d["canonical_version"] == "1.0"
+        assert d.get("routing_decision") is None  # populated at Foundry layer for routed sessions
 
     def test_user_message_stored(self, session_mem):
         r = session_mem.send("What is drift?")

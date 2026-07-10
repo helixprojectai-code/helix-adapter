@@ -104,6 +104,11 @@ class JointReceipt:
     # Canonicalization (RECEIPT CANONICALIZATION SPEC v1.0)
     canonical_version: Optional[str] = None
 
+    # Routing decision (for explicability / three-field schema in v1.7.4+)
+    routing_decision: Optional[str] = None
+    routing_matched_policy: Optional[str] = None
+    routing_policy_version: Optional[str] = None
+
     def to_dict(self) -> dict:
         import dataclasses
 
