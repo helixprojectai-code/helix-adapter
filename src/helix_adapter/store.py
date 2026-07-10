@@ -41,8 +41,9 @@ class ReceiptStore(ABC):
         # Automatically verify on export (network JSON-exports) to enforce active tamper-evidence
         for r in receipts:
             if not verify_receipt(r):
+                exchange_id = r.get("exchange_id")
                 raise ValueError(
-                    f"Tamper-evident verification failed during export for receipt {r.get('exchange_id')}"
+                    f"Tamper-evident verification failed during export for receipt {exchange_id}"
                 )
         if fmt == "json":
             return json.dumps(receipts, indent=2, default=str)
@@ -56,9 +57,8 @@ class InMemoryReceiptStore(ReceiptStore):
 
     def save(self, receipt: dict) -> None:
         if not verify_receipt(receipt):
-            raise ValueError(
-                f"Tamper-evident verification failed for receipt {receipt.get('exchange_id')}"
-            )
+            exchange_id = receipt.get("exchange_id")
+            raise ValueError(f"Tamper-evident verification failed for receipt {exchange_id}")
         sid = receipt["session_id"]
         self._data.setdefault(sid, []).append(receipt)
         # Since this save was verified, mark the session as verified for this process
@@ -69,8 +69,9 @@ class InMemoryReceiptStore(ReceiptStore):
             receipts = self._data.get(session_id, [])
             for r in receipts:
                 if not verify_receipt(r):
+                    exchange_id = r.get("exchange_id")
                     raise ValueError(
-                        f"Tamper-evident verification failed for receipt {r.get('exchange_id')} on load"
+                        f"Tamper-evident verification failed for receipt {exchange_id} on load"
                     )
             self._verified.add(session_id)
         return list(self._data.get(session_id, []))
@@ -116,9 +117,8 @@ class SQLiteReceiptStore(ReceiptStore):
 
     def save(self, receipt: dict) -> None:
         if not verify_receipt(receipt):
-            raise ValueError(
-                f"Tamper-evident verification failed for receipt {receipt.get('exchange_id')}"
-            )
+            exchange_id = receipt.get("exchange_id")
+            raise ValueError(f"Tamper-evident verification failed for receipt {exchange_id}")
         with self._conn() as conn:
             conn.execute(
                 """INSERT OR REPLACE INTO receipts
@@ -156,8 +156,10 @@ class SQLiteReceiptStore(ReceiptStore):
 
         for r in receipts:
             if not verify_receipt(r):
+                exchange_id = r.get("exchange_id")
                 raise ValueError(
-                    f"Tamper-evident verification failed for receipt {r.get('exchange_id')} on load (at-rest tampering detected?)"
+                    f"Tamper-evident verification failed for receipt {exchange_id} "
+                    "on load (at-rest tampering detected?)"
                 )
 
         self._verified.add(session_id)

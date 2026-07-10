@@ -144,7 +144,10 @@ def make_receipt(
     payload = user_message + assistant_response
     ts = time.time()
     # RFC3339 with nanosecond precision (padded)
-    timestamp = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ts)) + f".{int((ts % 1) * 1_000_000_000):09d}Z"
+    timestamp = (
+        time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ts))
+        + f".{int((ts % 1) * 1_000_000_000):09d}Z"
+    )
     receipt = {
         "exchange_id": hashlib.sha256((payload + str(ts)).encode()).hexdigest()[:16],
         "timestamp": timestamp,

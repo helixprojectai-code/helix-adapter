@@ -1,0 +1,25 @@
+name: Test
+
+on:
+  push:
+    branches: ["main", "spider-dev", "helix-dev"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  pytest:
+    name: pytest (core + foundry)
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install package with dev + widget extras
+      run: pip install -e ".[dev,widget]"
+
+    - name: pytest
+      run: pytest tests/ -v
