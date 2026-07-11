@@ -49,6 +49,12 @@ class ChatResult:
     receipt: dict
     drift: float
     cedar_active: bool = False
+    compliant: bool = True
+    compliance_issues: list[str] = None
+
+    def __post_init__(self):
+        if self.compliance_issues is None:
+            self.compliance_issues = []
 
 
 class HelixSecurityViolation(Exception):
@@ -170,6 +176,8 @@ class HelixAdapter:
             receipt=receipt,
             drift=drift,
             cedar_active=cedar_status["active"],
+            compliant=receipt["constitutional_compliant"],
+            compliance_issues=receipt["constitutional_issues"],
         )
 
     def running_drift(self) -> float:
