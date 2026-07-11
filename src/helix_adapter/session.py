@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from .drift import compute_drift
-from .markers import extract_claims
+from .markers import extract_claims, validate_response
 from .merkle import MerkleTree
 from .prompt import system_messages
 from .receipt import receipt_hash_bytes
@@ -108,6 +108,16 @@ class JointReceipt:
     routing_decision: Optional[str] = None
     routing_matched_policy: Optional[str] = None
     routing_policy_version: Optional[str] = None
+
+    # Constitutional compliance (marker format, glyph pairing) — was previously
+    # only checked by the manual /audit endpoint, never on live turns. See
+    # markers.validate_response().
+    constitutional_compliant: bool = True
+    constitutional_issues: list = None
+
+    def __post_init__(self):
+        if self.constitutional_issues is None:
+            self.constitutional_issues = []
 
     def to_dict(self) -> dict:
         import dataclasses
@@ -208,6 +218,7 @@ class HelixSession:
         claims = extract_claims(response)
         drift = compute_drift(response, claims)
         tier = self.threshold.tier(drift)
+        compliance = validate_response(response)
 
         # Cedar status
         cedar_status = "not_configured"
@@ -251,6 +262,8 @@ class HelixSession:
             "routing_decision": None,
             "routing_matched_policy": None,
             "routing_policy_version": None,
+            "constitutional_compliant": compliance["compliant"],
+            "constitutional_issues": compliance["issues"],
         }
 
         # Self-hash
