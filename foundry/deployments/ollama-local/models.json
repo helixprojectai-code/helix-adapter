@@ -1,0 +1,44 @@
+{
+  "endpoint": "http://ollama:11434/v1",
+  "key_env": "OLLAMA_API_KEY",
+  "azure": false,
+  "pool_map": {
+    "high_capability": "qwen2.5:32b",
+    "adversarial":     "llama3.1:8b",
+    "cost_optimized":  "qwen2.5:7b",
+    "sovereign":       "qwen2.5:32b"
+  },
+  "action_map": {
+    "bash":        "llama3.1:8b",
+    "execute":     "llama3.1:8b",
+    "api_call":    "llama3.1:8b",
+    "shell":       "llama3.1:8b",
+    "analyze":     "qwen2.5:32b",
+    "search":      "qwen2.5:32b",
+    "reason":      "qwen2.5:32b",
+    "write_file":  "qwen2.5:7b",
+    "edit_file":   "qwen2.5:7b",
+    "apply_patch": "qwen2.5:7b",
+    "summarize":   "qwen2.5:7b",
+    "translate":   "qwen2.5:32b",
+    "classify":    "qwen2.5:7b",
+    "default":     "qwen2.5:32b"
+  },
+  "models": {
+    "qwen2.5:32b": {
+      "deployment": "qwen2.5:32b",
+      "label": "Qwen2.5 32B (local)",
+      "temperature": 0.0
+    },
+    "llama3.1:8b": {
+      "deployment": "llama3.1:8b",
+      "label": "Llama 3.1 8B (local)",
+      "temperature": 0.0
+    },
+    "qwen2.5:7b": {
+      "deployment": "qwen2.5:7b",
+      "label": "Qwen2.5 7B (local)",
+      "temperature": 0.0
+    }
+  }
+}
