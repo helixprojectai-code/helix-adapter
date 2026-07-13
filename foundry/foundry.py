@@ -2601,4 +2601,14 @@ if __name__ == "__main__":
     import uvicorn
 
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8800
-    uvicorn.run(app, host="127.0.0.1", port=port)
+    # Default stays 127.0.0.1 for bare-metal/systemd deployments (the actual
+    # security boundary there — nginx reverse-proxies whatever's meant to be
+    # externally reachable). In a container, binding to the container's own
+    # loopback makes the app unreachable via Docker's host-side port mapping
+    # (`-p 127.0.0.1:8800:8800`) — that host-side mapping is what provides
+    # the "not exposed externally" guarantee in that context instead, so the
+    # in-container bind needs to be 0.0.0.0. HELIX_BIND_HOST lets the
+    # Dockerfile opt into that without changing the secure-by-default
+    # behavior for existing bare-metal deployments.
+    host = os.environ.get("HELIX_BIND_HOST", "127.0.0.1")
+    uvicorn.run(app, host=host, port=port)

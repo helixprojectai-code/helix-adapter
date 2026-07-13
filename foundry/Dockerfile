@@ -28,6 +28,10 @@ WORKDIR /app/foundry
 
 ENV HELIX_DEPLOYMENT=ollama-local
 ENV PYTHONUNBUFFERED=1
+# Bind to all interfaces inside the container — the actual "not exposed
+# externally" boundary comes from the host-side -p 127.0.0.1:8800:8800
+# port mapping instead. See HELIX_BIND_HOST handling in foundry.py.
+ENV HELIX_BIND_HOST=0.0.0.0
 
 EXPOSE 8800
 
