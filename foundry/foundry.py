@@ -28,6 +28,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from foundry_auth import require_key
 from openai import BadRequestError, OpenAI
 from pydantic import BaseModel
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, PointStruct, VectorParams
+from sentence_transformers import SentenceTransformer
 
 from helix_adapter import HelixAdapter, HelixSession
 from helix_adapter.drift import compute_drift
@@ -39,6 +42,27 @@ LEDGER_FILE = HERE / "foundry-ledger.jsonl"
 
 # ── Session Store ──
 FOUNDRY_STORE = SQLiteReceiptStore(path=HERE / "foundry-sessions.db")
+
+# ── Qdrant Vector Store (RAG) ──
+QDRANT_CLIENT = QdrantClient(host="qdrant", port=6333)
+QDRANT_COLLECTION = "helix-knowledge"
+QDRANT_VECTOR_SIZE = 384  # sentence-transformers/all-MiniLM-L6-v2 default
+
+# Ensure collection exists
+try:
+    QDRANT_CLIENT.get_collection(QDRANT_COLLECTION)
+except Exception:
+    QDRANT_CLIENT.create_collection(
+        collection_name=QDRANT_COLLECTION,
+        vectors_config=VectorParams(size=QDRANT_VECTOR_SIZE, distance=Distance.COSINE),
+    )
+
+# ── Embedding Model (for RAG context retrieval) ──
+try:
+    EMBEDDING_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+except Exception as e:
+    print(f"Warning: Could not load embedding model: {e}. RAG disabled.")
+    EMBEDDING_MODEL = None
 
 # Session metadata: session_id → {model_name, label, pool, policy_hash, created}
 # Persisted to JSON so sessions survive Foundry restarts.
@@ -891,9 +915,70 @@ def _check_rate_limit(request: Request) -> None:
             del _rate_buckets[k]
 
 
+# ── RAG Helper Functions ──
+def _embed_text(text: str) -> list[float] | None:
+    """Embed text using sentence-transformers."""
+    if not EMBEDDING_MODEL:
+        return None
+    try:
+        return EMBEDDING_MODEL.encode(text, convert_to_tensor=False).tolist()
+    except Exception:
+        return None
+
+
+def _retrieve_context(query: str, top_k: int = 5, min_score: float = 0.5) -> list[dict]:
+    """Search Qdrant for relevant context."""
+    if not EMBEDDING_MODEL:
+        return []
+
+    try:
+        query_vector = _embed_text(query)
+        if not query_vector:
+            return []
+
+        results = QDRANT_CLIENT.search(
+            collection_name=QDRANT_COLLECTION,
+            query_vector=query_vector,
+            limit=top_k,
+            score_threshold=min_score,
+        )
+
+        context = []
+        for hit in results:
+            context.append({
+                "text": hit.payload.get("text", ""),
+                "source": hit.payload.get("source", "unknown"),
+                "score": hit.score,
+                "metadata": hit.payload.get("metadata", {}),
+            })
+        return context
+    except Exception:
+        return []
+
+
+def _format_context(retrieved: list[dict]) -> str:
+    """Format retrieved context for prompt injection."""
+    if not retrieved:
+        return ""
+
+    context_lines = ["[CONTEXT FROM KNOWLEDGE BASE]"]
+    for i, item in enumerate(retrieved, 1):
+        source = item.get("source", "unknown")
+        text = item.get("text", "")[:500]  # Limit to 500 chars per context item
+        context_lines.append(f"\n[{i}] ({source}): {text}")
+    context_lines.append("\n[END CONTEXT]\n")
+    return "\n".join(context_lines)
+
+
 class ChatRequest(BaseModel):
     model: str
     message: str
+
+
+class IngestRequest(BaseModel):
+    text: str
+    source: str = "manual"  # manual, spider, repo, scan, file
+    metadata: dict = {}
 
 
 class RoutedChatRequest(BaseModel):
@@ -989,9 +1074,17 @@ async def chat(req: ChatRequest, request: Request, _key: dict = Depends(require_
     _check_rate_limit(request)
     if not req.message.strip():
         raise HTTPException(400, "message empty")
+
+    # RAG: Retrieve context from knowledge base
+    retrieved_context = _retrieve_context(req.message, top_k=5, min_score=0.5)
+    context_text = _format_context(retrieved_context)
+
+    # Inject context into message for enhanced response
+    augmented_message = context_text + req.message if context_text else req.message
+
     try:
         adapter, label, usage = build_adapter(req.model)
-        result = adapter.chat(req.message)
+        result = adapter.chat(augmented_message)
     except ValueError as e:
         raise HTTPException(400, str(e))
     except BadRequestError as e:
@@ -999,6 +1092,16 @@ async def chat(req: ChatRequest, request: Request, _key: dict = Depends(require_
         raise HTTPException(422, f"[SAFETY REJECTION] {label}")
     except Exception as e:
         raise HTTPException(502, f"Model call failed: {e}")
+
+    # Format citations from retrieved context
+    citations = [
+        {
+            "source": item.get("source", "unknown"),
+            "score": item.get("score", 0),
+            "metadata": item.get("metadata", {}),
+        }
+        for item in retrieved_context
+    ]
 
     entry = {
         "timestamp": time.time(),
@@ -1011,6 +1114,8 @@ async def chat(req: ChatRequest, request: Request, _key: dict = Depends(require_
         "drift": result.drift,
         "receipt_hash": result.receipt.get("hash", ""),
         "usage": usage,
+        "context_used": len(retrieved_context) > 0,
+        "context_count": len(retrieved_context),
     }
     _save_entry(entry)
 
@@ -1022,7 +1127,52 @@ async def chat(req: ChatRequest, request: Request, _key: dict = Depends(require_
         "drift": result.drift,
         "receipt": result.receipt,
         "usage": usage,
+        "citations": citations,
+        "context_retrieved": len(retrieved_context),
     }
+
+
+@app.post("/ingest")
+async def ingest(req: IngestRequest, _key: dict = Depends(require_key)):
+    """Ingest text into Qdrant knowledge base for RAG."""
+    if not req.text.strip():
+        raise HTTPException(400, "text empty")
+    if not EMBEDDING_MODEL:
+        raise HTTPException(503, "Embedding service unavailable")
+
+    try:
+        # Generate embedding
+        embedding = _embed_text(req.text)
+        if not embedding:
+            raise HTTPException(400, "Failed to embed text")
+
+        # Generate unique ID
+        point_id = int(time.time() * 1000) % (2**31)
+
+        # Store in Qdrant
+        point = PointStruct(
+            id=point_id,
+            vector=embedding,
+            payload={
+                "text": req.text[:2000],  # Limit stored text to 2000 chars
+                "source": req.source,
+                "timestamp": time.time(),
+                "metadata": req.metadata,
+            },
+        )
+        QDRANT_CLIENT.upsert(
+            collection_name=QDRANT_COLLECTION,
+            points=[point],
+        )
+
+        return {
+            "status": "ingested",
+            "id": point_id,
+            "text_length": len(req.text),
+            "source": req.source,
+        }
+    except Exception as e:
+        raise HTTPException(500, f"Ingestion failed: {str(e)}")
 
 
 @app.get("/routed-chat", response_class=HTMLResponse)
