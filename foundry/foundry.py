@@ -44,18 +44,22 @@ LEDGER_FILE = HERE / "foundry-ledger.jsonl"
 FOUNDRY_STORE = SQLiteReceiptStore(path=HERE / "foundry-sessions.db")
 
 # ── Qdrant Vector Store (RAG) ──
-QDRANT_CLIENT = QdrantClient(host="qdrant", port=6333)
+QDRANT_CLIENT = None
 QDRANT_COLLECTION = "helix-knowledge"
 QDRANT_VECTOR_SIZE = 384  # sentence-transformers/all-MiniLM-L6-v2 default
 
-# Ensure collection exists
 try:
-    QDRANT_CLIENT.get_collection(QDRANT_COLLECTION)
-except Exception:
-    QDRANT_CLIENT.create_collection(
-        collection_name=QDRANT_COLLECTION,
-        vectors_config=VectorParams(size=QDRANT_VECTOR_SIZE, distance=Distance.COSINE),
-    )
+    QDRANT_CLIENT = QdrantClient(host="qdrant", port=6333)
+    try:
+        QDRANT_CLIENT.get_collection(QDRANT_COLLECTION)
+    except Exception:
+        QDRANT_CLIENT.create_collection(
+            collection_name=QDRANT_COLLECTION,
+            vectors_config=VectorParams(size=QDRANT_VECTOR_SIZE, distance=Distance.COSINE),
+        )
+except Exception as e:
+    print(f"Warning: Could not connect to Qdrant: {e}. RAG disabled.")
+    QDRANT_CLIENT = None
 
 # ── Embedding Model (for RAG context retrieval) ──
 try:
@@ -928,7 +932,7 @@ def _embed_text(text: str) -> list[float] | None:
 
 def _retrieve_context(query: str, top_k: int = 5, min_score: float = 0.5) -> list[dict]:
     """Search Qdrant for relevant context."""
-    if not EMBEDDING_MODEL:
+    if not EMBEDDING_MODEL or not QDRANT_CLIENT:
         return []
 
     try:
@@ -1137,8 +1141,8 @@ async def ingest(req: IngestRequest, _key: dict = Depends(require_key)):
     """Ingest text into Qdrant knowledge base for RAG."""
     if not req.text.strip():
         raise HTTPException(400, "text empty")
-    if not EMBEDDING_MODEL:
-        raise HTTPException(503, "Embedding service unavailable")
+    if not EMBEDDING_MODEL or not QDRANT_CLIENT:
+        raise HTTPException(503, "Knowledge ingestion service unavailable")
 
     try:
         # Generate embedding

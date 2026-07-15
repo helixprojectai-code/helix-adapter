@@ -43,6 +43,7 @@ services:
       - "127.0.0.1:8800:8800"
     depends_on:
       - ollama
+      - qdrant
     networks:
       - core-internal
     restart: unless-stopped
