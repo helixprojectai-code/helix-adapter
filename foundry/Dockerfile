@@ -28,10 +28,10 @@ WORKDIR /app/foundry
 
 ENV HELIX_DEPLOYMENT=ollama-local
 ENV PYTHONUNBUFFERED=1
-# Bind to all interfaces inside the container — the actual "not exposed
-# externally" boundary comes from the host-side -p 127.0.0.1:8800:8800
-# port mapping instead. See HELIX_BIND_HOST handling in foundry.py.
 ENV HELIX_BIND_HOST=0.0.0.0
+# TODO: Implement proper secret management (Vault/Secrets Manager)
+# For now, API key database lives in the mounted volume at /root/.helix
+ENV FOUNDRY_KEYS_DB=/root/.helix/foundry_keys.db
 
 EXPOSE 8800
 

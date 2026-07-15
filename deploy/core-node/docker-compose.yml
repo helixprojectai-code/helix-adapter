@@ -36,6 +36,7 @@ services:
       - HELIX_DEPLOYMENT=ollama-local
       - OLLAMA_API_KEY=ollama-local-no-auth-required
       - HELIX_TRUST_PROXY=1
+      - FOUNDRY_KEYS_DB=/root/.helix/foundry_keys.db
     volumes:
       - /mnt/workdisk/foundry:/root/.helix
     ports:
