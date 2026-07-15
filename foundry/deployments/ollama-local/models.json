@@ -26,12 +26,12 @@
   },
   "models": {
     "gemma4": {
-      "deployment": "gemma4",
+      "deployment": "gemma4:latest",
       "label": "Gemma4 (local)",
       "temperature": 0.0
     },
     "magnus-supernova": {
-      "deployment": "magnus-supernova",
+      "deployment": "heavylildude/magnus-supernova:latest",
       "label": "Magnus-Supernova (local)",
       "temperature": 0.0
     }
