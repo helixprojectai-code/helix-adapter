@@ -979,6 +979,52 @@ class ChatRequest(BaseModel):
     message: str
 
 
+class OpenAIMessage(BaseModel):
+    role: str
+    content: str
+
+
+class OpenAIChatRequest(BaseModel):
+    model: str
+    messages: list[OpenAIMessage]
+    temperature: float = 0.7
+    max_tokens: int = 4096
+    stream: bool = False
+
+
+class OpenAIChoice(BaseModel):
+    index: int
+    message: OpenAIMessage
+    finish_reason: str = "stop"
+
+
+class OpenAIUsage(BaseModel):
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
+class OpenAIChatResponse(BaseModel):
+    id: str
+    object: str = "chat.completion"
+    created: int
+    model: str
+    choices: list[OpenAIChoice]
+    usage: OpenAIUsage
+
+
+class OpenAIModel(BaseModel):
+    id: str
+    object: str = "model"
+    owned_by: str = "helix"
+    permission: list = []
+
+
+class OpenAIModelsResponse(BaseModel):
+    object: str = "list"
+    data: list[OpenAIModel]
+
+
 class IngestRequest(BaseModel):
     text: str
     source: str = "manual"  # manual, spider, repo, scan, file
@@ -1134,6 +1180,73 @@ async def chat(req: ChatRequest, request: Request, _key: dict = Depends(require_
         "citations": citations,
         "context_retrieved": len(retrieved_context),
     }
+
+
+@app.get("/v1/models")
+async def list_models(_key: dict = Depends(require_key)):
+    """List available models in OpenAI format."""
+    models = [
+        OpenAIModel(id=name, owned_by="helix")
+        for name in MODELS.keys()
+    ]
+    return OpenAIModelsResponse(data=models)
+
+
+@app.post("/v1/chat/completions")
+async def chat_completions(req: OpenAIChatRequest, request: Request, _key: dict = Depends(require_key)):
+    """OpenAI-compatible chat completions endpoint."""
+    if req.stream:
+        raise HTTPException(400, "streaming not supported")
+    if not req.messages:
+        raise HTTPException(400, "messages required")
+
+    _check_rate_limit(request)
+
+    # Extract the last user message
+    user_message = ""
+    for msg in reversed(req.messages):
+        if msg.role == "user":
+            user_message = msg.content
+            break
+
+    if not user_message:
+        raise HTTPException(400, "no user message in request")
+
+    # RAG: Retrieve context from knowledge base
+    retrieved_context = _retrieve_context(user_message, top_k=5, min_score=0.5)
+    context_text = _format_context(retrieved_context)
+    augmented_message = context_text + user_message if context_text else user_message
+
+    try:
+        adapter, label, usage = build_adapter(req.model)
+        result = adapter.chat(augmented_message)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except BadRequestError as e:
+        label = _content_filter_label(e)
+        raise HTTPException(422, f"[SAFETY REJECTION] {label}")
+    except Exception as e:
+        raise HTTPException(502, f"Model call failed: {e}")
+
+    response = OpenAIChatResponse(
+        id=f"chatcmpl-{int(time.time() * 1000)}",
+        created=int(time.time()),
+        model=req.model,
+        choices=[
+            OpenAIChoice(
+                index=0,
+                message=OpenAIMessage(role="assistant", content=result.response),
+                finish_reason="stop"
+            )
+        ],
+        usage=OpenAIUsage(
+            prompt_tokens=usage.get("prompt_tokens", 0),
+            completion_tokens=usage.get("completion_tokens", 0),
+            total_tokens=usage.get("total_tokens", 0),
+        )
+    )
+
+    return response
 
 
 @app.post("/ingest")
