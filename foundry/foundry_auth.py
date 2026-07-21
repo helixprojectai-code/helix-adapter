@@ -16,7 +16,7 @@ Usage:
 import logging
 from datetime import datetime, timezone
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import APIKeyHeader
 from foundry_db import get_conn, hash_key
 
@@ -26,14 +26,22 @@ logging.basicConfig(level=logging.DEBUG)
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
-def require_key(x_api_key: str = Depends(_api_key_header)) -> dict:
-    if not x_api_key:
-        raise HTTPException(status_code=401, detail="X-API-Key header required")
+def require_key(request: Request, x_api_key: str = Depends(_api_key_header)) -> dict:
+    api_key = x_api_key
 
-    key_hash = hash_key(x_api_key)
+    # If X-API-Key not provided, try Authorization: Bearer header
+    if not api_key:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            api_key = auth_header[7:]  # Extract token after "Bearer "
+
+    if not api_key:
+        raise HTTPException(status_code=401, detail="X-API-Key header or Authorization: Bearer token required")
+
+    key_hash = hash_key(api_key)
     conn = get_conn()
     try:
-        logger.debug(f"Presented key: {x_api_key[:8]}...")
+        logger.debug(f"Presented key: {api_key[:8]}...")
         logger.debug(f"Hash: {key_hash[:16]}...")
 
         row = conn.execute(
