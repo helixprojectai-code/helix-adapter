@@ -1,0 +1,2 @@
+shape,trace_real,trace_imag,trace_magnitude,unitarity_error,unitary_within_1e-6
+"(8, 8)",-1.0,0.0,1.0,7.374195032383568e-09,True
