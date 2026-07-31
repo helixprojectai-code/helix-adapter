@@ -1,0 +1,67 @@
+# core node — local inference stack (Ollama + helix-adapter/Foundry + OpenWebUI + Qdrant)
+#
+# Run from this directory: docker compose up -d
+# Build context for foundry is the repo root (../..), since it needs the
+# full src/ tree for the editable helix-adapter install.
+#
+# Only foundry and openwebui bind to the host at all, and only on
+# 127.0.0.1 — nginx on the host reverse-proxies whichever of those you
+# want externally reachable, behind the existing UFW/NSG firewall
+# (already locked to home IP). ollama and qdrant are internal-only,
+# reachable to other containers by service name, never exposed to the
+# host or the internet directly.
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - /mnt/workdisk/ollama:/root/.ollama
+    networks:
+      - core-internal
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    volumes:
+      - /mnt/workdisk/qdrant:/qdrant/storage
+    networks:
+      - core-internal
+    restart: unless-stopped
+
+  foundry:
+    build:
+      context: ../..
+      dockerfile: foundry/Dockerfile
+    environment:
+      - HELIX_DEPLOYMENT=ollama-local
+      - OLLAMA_API_KEY=ollama-local-no-auth-required
+      - HELIX_TRUST_PROXY=1
+      - FOUNDRY_KEYS_DB=/root/.helix/foundry_keys.db
+    volumes:
+      - /mnt/workdisk/foundry:/root/.helix
+    ports:
+      - "0.0.0.0:8800:8800"
+    depends_on:
+      - ollama
+      - qdrant
+    networks:
+      - core-internal
+    restart: unless-stopped
+
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    volumes:
+      - /mnt/workdisk/openwebui:/app/backend/data
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    ports:
+      - "0.0.0.0:8081:8080"
+    depends_on:
+      - ollama
+    networks:
+      - core-internal
+    restart: unless-stopped
+
+networks:
+  core-internal:
+    driver: bridge
