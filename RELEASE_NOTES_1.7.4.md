@@ -1,13 +1,36 @@
-v1.7.4 Von Duck’s Fixed-Precision Alibi Latest
-@stephenh67 stephenh67 released this 3 hours ago
- v1.7.4
- 333ec2e 
-helix-adapter v1.7.4 Release Notes
-Released: 2026-07-10
-Branch: build-dev
-PyPI: pip install helix-adapter==1.7.4
+---
+id: release-2026-07-30-v1-7-4
+type: release
+timestamp: 2026-07-30T00:00:00Z
+date: 2026-07-30
+author: Stephen Hope
+custodian: Steve Hope
+substrate: Helix-Adapter
+schema_version: v1.0.0
+constitutional_version: v1.0
+ratification_status: ratified
+maturity: published
+category: release
+status: closed
+tags:
+  - release
+  - v1.7.4
+  - specification-alignment
+  - hardening-preparation
+  - zenodo-v1.7.4
+severity: medium
+routing:
+  target_node: SPIDER
+  action_required: false
+---
 
-Overview
+# helix-adapter v1.7.4 Release Notes
+
+**Released:** 2026-07-30 (public release date)  
+**Branch:** build-dev  
+**PyPI:** `pip install helix-adapter==1.7.4`
+
+## Overview
 v1.7.4 aligns the helix-adapter package with the canonical Helix-TTD: Distributed Cognitive Upload Framework — Technical Architecture & Evidence-by-Design Specification v1.7.4.
 
 Zenodo record: https://zenodo.org/records/21270562

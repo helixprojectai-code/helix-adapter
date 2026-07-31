@@ -1,14 +1,103 @@
-# Helix-Adapter Codebase: Architectural Deep Dive
+---
+id: research-2026-07-10-helix-adapter-architecture
+type: research
+timestamp: 2026-07-10T00:00:00Z
+date: 2026-07-10
+author: Stephen Hope
+custodian: Steve Hope
+substrate: Helix-Adapter
+schema_version: v1.0.0
+constitutional_version: v1.0
+ratification_status: ratified
+maturity: published
+category: architecture
+status: closed
+tags:
+  - architecture
+  - constitutional-wrapper
+  - epistemic-enforcement
+  - duck-gate
+  - cedar-gate
+severity: critical
+routing:
+  target_node: LATTICE
+  action_required: false
+epistemic_frame:
+  - claim: "All governance logic runs outside the model; the model is never trusted to self-report compliance"
+    frame: FACT
+  - claim: "Epistemic marker coverage can be enforced via independent layers without single points of failure"
+    frame: HYPOTHESIS
+  - claim: "Out-of-band validation of marker compliance is a necessary condition for auditable AI governance"
+    frame: ASSUMPTION
+---
 
-`helix-adapter` is a portable constitutional wrapper for AI models. It functions as an **epistemic interceptor**, enforcing structured output through explicit epistemic markers, measuring epistemic marker coverage, validating format compliance, and generating tamper-evident cryptographic receipts.
+# Research: Helix-Adapter Architecture & Constitutional Wrapper Design
 
-All governance logic — claim extraction, marker-coverage calculation, receipt generation — runs **outside** the model. The model is never trusted to self-report compliance or its own coverage score.
+**Researcher(s):** Stephen Hope (Custodian)  
+**Ratification Date:** 2026-07-10  
+**Status:** Ratified  
+**Confidence Level:** High
+
+---
+
+## Research Question
+
+How can we build a portable, model-agnostic wrapper that enforces epistemic discipline and constitutional governance on any LLM backend, producing tamper-evident audit trails that neither the model nor any intermediate system can forge or override?
+
+**Hypothesis:**
+By layering multiple independent enforcement mechanisms (constitutional prompt, out-of-band claim extraction, cryptographic receipts, and deterministic policy evaluation), we can achieve auditable governance that remains robust even if individual layers are compromised.
+
+**Scope:**
+This architecture document covers helix-adapter's design from v1.0 through v1.7.4, including single-turn (HelixAdapter), multi-turn (HelixSession), and dual-gate (Duck Gate + Cedar Gate) governance layers. Out of scope: Foundry's model routing policies and deployment-specific configuration.
+
+---
+
+## Methodology
+
+**Core Design Principles:**
+
+1. **Out-of-band enforcement** — All governance logic (extraction, validation, receipt generation) runs in the adapter, never delegated to the model itself.
+2. **Fail-closed defaults** — When in doubt, deny. Authorization checks must explicitly permit; policy unavailability = deny by default.
+3. **Multiple independent layers** — Constitutional prompt establishes rules; extraction validates; validation rejects violations; audit seals the record. No single point of failure.
+4. **Deterministic evaluation** — `temperature = 0.0` in production. Stochastic variation undermines audit trail reproducibility.
+5. **Tamper-evident records** — Every exchange produces a SHA-256 sealed receipt. Modification anywhere in the chain invalidates all downstream hashes.
+
+**Implementation Approach:**
+Sequential layers (Prompt Injection → Model Call → Claim Extraction → Marker Coverage Scoring → Receipt Generation) with independent validation at each stage.
+
+---
+
+## Key Findings
+
+### Design Decision: Out-of-Band Governance
+**[FACT]** The model cannot be trusted to self-report its own compliance or marker coverage.  
+**[HYPOTHESIS]** Extracting and scoring markers outside the model, using deterministic regex and character-counting, eliminates the need for model self-awareness.  
+**[RATIONALE]** Tested via red-team scenarios (RFC 0005); models consistently fabricate coverage metrics or refuse the framework when it requires honest self-assessment.
+
+### Design Decision: Multiple Independent Validation Layers
+**[FACT]** Single-layer enforcement (prompt-only, extraction-only, scoring-only) has repeatedly been bypassed in adversarial testing.  
+**[HYPOTHESIS]** Enforcing the same invariants across four independent stages (prompt, extraction, validation, audit) means an attacker must compromise all layers simultaneously.  
+**[RATIONALE]** Each layer validates independently; a breach in one layer does not propagate. Demonstrated in `test_v12_pipeline.py`.
+
+### Design Decision: Temperature = 0.0 in Production
+**[FACT]** Stochastic variation (T > 0) produces different marker-coverage scores for identical inputs, defeating deterministic audit trails.  
+**[HYPOTHESIS]** Enforcing T=0 for all auditable inferences ensures receipts are reproducible and legally defensible.  
+**[RATIONALE]** Audit trails are worthless if `HelixAdapter.chat(msg_A)` can produce different receipts on two runs with identical configuration. Legal precedent: immutable evidence requires determinism.
+
+### Design Decision: Dual-Gate (Duck Gate + Cedar Gate)
+**[FACT]** Response-level governance (Duck Gate: marker coverage) does not control actions (tool use, shell commands, API calls).  
+**[HYPOTHESIS]** A second, independent policy engine (Cedar Gate) on the action layer closes the seam between "the model said something compliant" and "the model did something dangerous."  
+**[RATIONALE]** v1.4 deployment showed that constitutional prompts alone could not prevent a compliant-sounding response from triggering shell commands via tool use. Two independent gates required.
+
+---
+
+## Findings & Technical Deep Dive
 
 **Canonical Repository:** `github.com/helixprojectai-code/helix-adapter`
 
-**Terminology note:** the field/class names below (`drift_score`, `drift_tier`, `DriftThreshold`, `compute_drift()`) are the real, shipped API and unchanged for stability. The concept they measure is narrow: what fraction of a response's text lacks a proper epistemic marker. It is **not** the constitutional convergence tolerance (γ = 0.17, Policy 007) referenced elsewhere in Helix's mesh governance, and not RFC 0002's proposed attention-dispersion metric (κ) — three unrelated measures that historically shared a name and similar threshold values. This doc calls the concept "marker coverage" in prose and uses the field names only when referring to code.
+**Terminology note:** The field/class names below (`drift_score`, `drift_tier`, `DriftThreshold`, `compute_drift()`) are the real, shipped API and unchanged for stability. The concept they measure is narrow: what fraction of a response's text lacks a proper epistemic marker. It is **not** the constitutional convergence tolerance (γ = 0.17, Policy 007) referenced elsewhere in Helix's mesh governance, and not RFC 0002's proposed attention-dispersion metric (κ) — three unrelated measures that historically shared a name and similar threshold values. This document calls the concept "marker coverage" in prose and uses the field names only when referring to code.
 
-## Project Structure
+### Project Structure
 
 ```
 helix-adapter/
@@ -411,6 +500,62 @@ context-field vocabulary and the five routing policies.
 
 ---
 
-*This architecture document was contributed and reviewed by the community.*
+## Limitations & Known Constraints
+
+**Marker Coverage as Text-Completeness, Not Semantic Coherence:**
+Marker coverage measures whether output text is syntactically labeled, not whether the labels are semantically correct. A model can prefix false claims with `[FACT]` — the adapter detects improper labeling, not falsehood. See RFC 0005 (Authority Verification) for defensive measures.
+
+**Single-Model Evaluation Only:**
+HelixSession chains receipts for one model across multiple turns. Cross-model consistency or model-swapping mid-session is not audited. Each model change resets the chain context.
+
+**Temperature = 0.0 Requirement:**
+Stochastic inference (T > 0) produces non-deterministic receipts, breaking auditability. Production deployments must enforce T=0. This limits use cases where model creativity is desired (creative writing, brainstorming) — trade-off accepted for governance robustness.
+
+**Cedar Availability Dependency:**
+Cedar Gate fails *closed* (deny by default if Cedar is unavailable). This is intentional for security but means a Cedar library crash or misconfiguration blocks all tool use. Routing decisions fail *open* (static fallback map) — see RFC 0004 for rationale.
+
+**Merkle Tree Complexity:**
+Append-only Merkle tree operations are O(log N) per turn for proofs but O(N) for full reconstruction after resumption from storage. Large sessions (10k+ turns) will incur latency on resume. Mitigated by storing historical roots per turn.
+
+**No Built-In Rollback or Fork Handling:**
+Once a receipt is sealed in the chain, it cannot be retracted. Decisions or hallucinations are permanent in the audit trail. Human custodians must manage remediation outside the adapter.
+
+---
+
+## Related Work & Cross-References
+
+**Related RFCs:**
+- **RFC 0002:** Sparse attention masks and attention-dispersion (κ) metrics — a separate, proposed measure for constraining hidden reasoning. Not yet integrated into core HelixAdapter.
+- **RFC 0003:** Cedar Dual-Gate specification — formalization of action-layer policy evaluation.
+- **RFC 0004:** Foundry's Cedar routing policies — model-pool selection via Cedar (independent of Duck/Cedar gates).
+- **RFC 0005:** Deductive Probing Framework & Authority Verification — defensive measures against instrumental compliance and probe evasion.
+
+**Test Artifacts:**
+- `test_basic.py` — 11 unit tests covering marker parsing, receipt integrity, edge cases
+- `test_v12_pipeline.py` — 4 integration tests for v1.2 hardening (format violations, blind spots, tampering, determinism)
+- `test_cedar.py` — 34 tests for dual-gate policy evaluation, fail-closed behavior, action receipts
+- `test_session.py` — 81 tests for session architecture, chain integrity, store lifecycle, context manager protocol
+
+**Future Research:**
+- RFC 0002's sparse attention integration (currently out of scope for core HelixAdapter)
+- Merkle tree optimization for high-turn sessions (performance profiling needed)
+- Cross-model authority consistency (do models recognize Helix authority differently under system prompt vs. user message vs. tool description?)
+- Hardware attestation integration for TEE-sealed receipts (Nitro Enclaves, AMD SEV)
+
+---
+
+## Status Log
+
+| Date | Status | Progress | Notes |
+|------|--------|----------|-------|
+| 2026-06-26 | Design | v1.0 architecture formalized | Single-turn HelixAdapter, Duck Gate, foundational receipt schema |
+| 2026-06-30 | Enhancement | v1.5 HelixSession released | Multi-turn session host, chain hash, SQLiteReceiptStore |
+| 2026-07-04 | Hardening | v1.7.0 API security audit complete | Keys hashed at rest, tenant isolation, rate limiter trust-proxy fix |
+| 2026-07-06 | Enhancement | v1.7.3 Cedar routing completed | All 5 routing policies verified live; RFC 0004 published |
+| 2026-07-10 | Documentation | Architecture ratified | This research document formalized; epistemic framing added |
+
+---
+
+*Architecture research conducted 2026-06-26 through 2026-07-10 | Stephen Hope (Custodian) | Ratified 2026-07-10 | Confidence: High*
 
 **The formation holds.** 🦆

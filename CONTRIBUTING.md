@@ -2,6 +2,22 @@
 
 First off — thank you. This project exists because people who care about structural AI governance found each other.
 
+## Constitutional Alignment
+
+All contributions to helix-adapter must align with Helix's constitutional governance principles:
+
+- **Epistemic Discipline:** All code, documentation, and design decisions must use structured epistemic framing (`[FACT]` / `[HYPOTHESIS]` / `[ASSUMPTION]`) when appropriate. Empirical claims must be verifiable; theoretical claims must be explicitly framed as such.
+
+- **Out-of-Band Enforcement:** The model is never trusted to self-report compliance. All governance (epistemic markers, marker coverage, receipts) is computed *outside* the model. Contributions that move governance logic into the model will not be accepted.
+
+- **Fail-Closed by Default:** Authorization and validation systems must deny by default. Contributions that relax security boundaries require explicit security review and ratification.
+
+- **Tamper-Evident Auditability:** All artifacts (receipts, decisions, audit trails) must be cryptographically sealed and verifiable by external parties. No opaque states; no side channels.
+
+For detailed governance principles, see [helix-adapter ARCHITECTURE.md](ARCHITECTURE.md) and the RFC series in `docs/rfc/`.
+
+---
+
 ## Scope
 
 We welcome contributions that improve the adapter's ability to enforce epistemic discipline, measure marker coverage, and produce tamper-evident receipts. This includes:

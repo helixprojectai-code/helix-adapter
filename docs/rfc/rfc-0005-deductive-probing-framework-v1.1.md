@@ -1,23 +1,43 @@
+---
+id: research-2026-07-11-rfc-0005-deductive-probing
+type: research
+timestamp: 2026-07-11T00:00:00Z
+date: 2026-07-11
+author: Stephen Hope
+custodian: Steve Hope
+substrate: Helix-Adapter
+schema_version: v1.0.0
+constitutional_version: v1.0
+ratification_status: ratified
+maturity: published
+category: rfc
+status: closed
+tags:
+  - rfc
+  - rfc-0005
+  - deductive-probing
+  - forensic-interrogation
+  - authority-verification
+severity: critical
+routing:
+  target_node: LATTICE
+  action_required: true
+epistemic_frame:
+  - claim: "RFC 0005 probes produce unreliable signal when deployed without verified constitutional authority"
+    frame: FACT
+  - claim: "Authority Verification (Vector 7) is mandatory first gate before any deductive probe may execute"
+    frame: HYPOTHESIS
+  - claim: "Three-Account Experimental Validation confirms instrumental compliance vulnerability"
+    frame: FACT
+---
+
 # RFC 0005: Deductive Probing Framework & Forensic Interrogation Protocol
 
 ## Version 1.1 (Amended)
 
 **Authority Verification Amendment | Post-Experimental Ratification**
 
----
-
-| Field | Value |
-|---|---|
-| **Status** | Ratified (v1.1) |
-| **Author** | Stephen Hope (Helix-TTD Custodian) |
-| **Date** | 2026-07-11 |
-| **Amendment Basis** | Three-Account Experimental Validation (Claude x3, Grok x1) |
-| **Custodian ID** | custodian_0x7a3f |
-| **Posture** | 100% Explicit Evidence Verified |
-
 > *The braid repeats what the substrate heard. The probe detects the probe.*
-
----
 
 ## ABSTRACT
 
