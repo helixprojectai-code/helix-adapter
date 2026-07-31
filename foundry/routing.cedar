@@ -1,8 +1,9 @@
 // Helix Foundry Routing Policy — Cedar as Decision Mesh
 // RFC 0003 extension: Cedar evaluates request context → routes to ModelPool.
-// No fallback policy here — Python handles the default (see cedar_route()).
+// Deployment: gemma4:latest (high-capability), magnus-supernova:latest (cost-optimized)
+// Fallback: Python handles unmatched policies (see cedar_route()).
 
-// ── Policy 1: High-Stakes Logic → DeepSeek 4 Pro ──
+// ── Policy 1: High-Complexity / Reasoning → gemma4 (high_capability) ──
 permit(
     principal is Helix::Agent,
     action == Helix::Action::"infer",
@@ -10,16 +11,15 @@ permit(
 )
 when {
     context has task_complexity &&
-    context.task_complexity >= 8 &&
-    context has drift_tolerance &&
-    context.drift_tolerance.lessThan(decimal("0.05"))
+    context.task_complexity >= 8
 };
 
-// ── Policy 2: Adversarial / Execution → Grok 4.3 ──
+// ── Policy 2: Code Execution / Bash → gemma4 (high_capability) ──
+// Execution contexts require strongest reasoning for safety.
 permit(
     principal is Helix::Agent,
     action == Helix::Action::"infer",
-    resource == Helix::ModelPool::"adversarial"
+    resource == Helix::ModelPool::"high_capability"
 )
 when {
     context has action_type &&
@@ -31,7 +31,8 @@ when {
     )
 };
 
-// ── Policy 3: Cost-Sensitive / Batch → GPT-5.4 Nano ──
+// ── Policy 3: Batch / Low-Drift → magnus-supernova (cost_optimized) ──
+// Batch workloads with relaxed drift tolerance use cost model.
 permit(
     principal is Helix::Agent,
     action == Helix::Action::"infer",
@@ -44,36 +45,8 @@ when {
     context.drift_tolerance.greaterThanOrEqual(decimal("0.10"))
 };
 
-// ── Policy 4: Multilingual / European → Mistral Large 3 ──
-permit(
-    principal is Helix::Agent,
-    action == Helix::Action::"infer",
-    resource == Helix::ModelPool::"sovereign"
-)
-when {
-    context has locale &&
-    (
-        context.locale == "fr" ||
-        context.locale == "de" ||
-        context.locale == "es" ||
-        context.locale == "it" ||
-        context.locale == "nl" ||
-        context.locale == "pt"
-    )
-};
-
-// High-complexity tasks always go to high_capability — cost_optimized is blocked
-forbid(
-    principal is Helix::Agent,
-    action == Helix::Action::"infer",
-    resource == Helix::ModelPool::"cost_optimized"
-)
-when {
-    context has task_complexity &&
-    context.task_complexity >= 8
-};
-
-// ── Policy 5: Structured Output / Low-Cost → GPT-5.4 Nano ──
+// ── Policy 4: Structured Output → magnus-supernova (cost_optimized) ──
+// Write/edit/patch operations are well-bounded; cost model sufficient.
 permit(
     principal is Helix::Agent,
     action == Helix::Action::"infer",
@@ -87,4 +60,16 @@ when {
         context.action_type == "apply_patch" ||
         context.action_type == "summarize"
     )
+};
+
+// ── Safety: Block cost-optimized for high-complexity ──
+// Prevents downrouting high-stakes work to cheaper model.
+forbid(
+    principal is Helix::Agent,
+    action == Helix::Action::"infer",
+    resource == Helix::ModelPool::"cost_optimized"
+)
+when {
+    context has task_complexity &&
+    context.task_complexity >= 8
 };

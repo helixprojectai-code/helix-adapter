@@ -1,0 +1,39 @@
+{
+  "endpoint": "http://ollama:11434/v1",
+  "key_env": "OLLAMA_API_KEY",
+  "azure": false,
+  "pool_map": {
+    "high_capability": "gemma4",
+    "adversarial":     "gemma4",
+    "cost_optimized":  "magnus-supernova",
+    "sovereign":       "gemma4"
+  },
+  "action_map": {
+    "bash":        "gemma4",
+    "execute":     "gemma4",
+    "api_call":    "gemma4",
+    "shell":       "gemma4",
+    "analyze":     "gemma4",
+    "search":      "gemma4",
+    "reason":      "gemma4",
+    "write_file":  "gemma4",
+    "edit_file":   "gemma4",
+    "apply_patch": "gemma4",
+    "summarize":   "gemma4",
+    "translate":   "gemma4",
+    "classify":    "gemma4",
+    "default":     "gemma4"
+  },
+  "models": {
+    "gemma4": {
+      "deployment": "gemma4:latest",
+      "label": "Gemma4 (local)",
+      "temperature": 0.0
+    },
+    "magnus-supernova": {
+      "deployment": "heavylildude/magnus-supernova:latest",
+      "label": "Magnus-Supernova (local)",
+      "temperature": 0.0
+    }
+  }
+}
