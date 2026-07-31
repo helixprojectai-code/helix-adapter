@@ -1,0 +1,266 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Helix Element Core Schema v1",
+  "description": "Canonical JSON schema for all Helix elements (chronicle, signal, registry, governance, DBC). MD versions are isomorphic projections of this form.",
+  "type": "object",
+  "required": [
+    "id",
+    "type",
+    "timestamp",
+    "author",
+    "schema_version"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier (UUID or element-type-TIMESTAMP format)",
+      "pattern": "^[a-zA-Z0-9_-]+$"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "chronicle",
+        "signal",
+        "registry_entry",
+        "governance",
+        "dbc",
+        "amendment",
+        "research",
+        "task",
+        "journal",
+        "meeting",
+        "release",
+        "invariant"
+      ],
+      "description": "Element type"
+    },
+    "schema_version": {
+      "type": "string",
+      "description": "Version of this schema that validates this element",
+      "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of creation"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "YYYY-MM-DD for human reference"
+    },
+    "author": {
+      "type": "string",
+      "description": "Creator/source (node name, person, or 'system')"
+    },
+    "custodian": {
+      "type": "string",
+      "description": "Custodian of record (always 'Steve Hope' for Helix project)",
+      "default": "Steve Hope"
+    },
+    "substrate": {
+      "type": "string",
+      "description": "Execution environment (e.g., 'Claude/helixclaw', 'Gemini/Google-AI-Studio', 'deepseek/api')",
+      "examples": [
+        "Claude/helixclaw",
+        "Gemini/Google-AI-Studio",
+        "deepseek/api",
+        "system/cron"
+      ]
+    },
+    "constitutional_version": {
+      "type": "string",
+      "description": "Version of Helix constitutional framework active at time of creation",
+      "pattern": "^v[0-9]+\\.[0-9]+$"
+    },
+    "geng": {
+      "type": "integer",
+      "description": "GENG watermark (significance/qualification event counter)",
+      "minimum": 0
+    },
+    "ratification_status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "review",
+        "ratified",
+        "archived",
+        "superseded"
+      ],
+      "description": "Governance status"
+    },
+    "epistemic_frame": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "claim": {
+            "type": "string",
+            "description": "The assertion"
+          },
+          "frame": {
+            "type": "string",
+            "enum": [
+              "FACT",
+              "HYPOTHESIS",
+              "ASSUMPTION"
+            ],
+            "description": "Epistemic confidence level"
+          }
+        }
+      },
+      "description": "Structured factual claims using TRACE epistemic framing"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "description": "Severity level for audit/risk items (signal only)"
+    },
+    "threshold_exceeded": {
+      "type": "boolean",
+      "description": "Did this item exceed drift tolerance γ=0.17? (signal only)"
+    },
+    "proof": {
+      "type": "object",
+      "properties": {
+        "hash": {
+          "type": "string",
+          "description": "Proof hash (c-seed, TEL convergence seed, etc.)"
+        },
+        "derivation_method": {
+          "type": "string",
+          "description": "How the proof was derived"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "verifier": {
+          "type": "string",
+          "description": "Node/entity that verified the proof"
+        }
+      },
+      "description": "Cryptographic proof record"
+    },
+    "signature": {
+      "type": "object",
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "description": "Signing algorithm (e.g., 'Ed25519', 'sha256')"
+        },
+        "value": {
+          "type": "string",
+          "description": "Signature value (hex or PEM)"
+        },
+        "signed_by": {
+          "type": "string",
+          "description": "Identity that signed"
+        }
+      },
+      "description": "Digital signature (optional, for ratified items)"
+    },
+    "routing": {
+      "type": "object",
+      "properties": {
+        "target_node": {
+          "type": "string",
+          "description": "Which node should act on this (TRACE, SPIDER, BESS, etc.)",
+          "examples": [
+            "TRACE",
+            "SPIDER",
+            "BESS",
+            "INNY",
+            "OUTTIE"
+          ]
+        },
+        "action_required": {
+          "type": "boolean",
+          "description": "Does this require action, or is it informational?"
+        },
+        "precedent_id": {
+          "type": "string",
+          "description": "Reference to related prior element"
+        }
+      },
+      "description": "Constitutional routing information"
+    },
+    "category": {
+      "type": "string",
+      "description": "Semantic category (e.g., 'infrastructure', 'security', 'governance', 'adoption')"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Search/filter tags"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "in_progress",
+        "resolved",
+        "closed"
+      ],
+      "description": "Current status"
+    },
+    "maturity": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "review",
+        "published",
+        "archived"
+      ],
+      "description": "Work state (draft = incomplete, review = pending approval, published = ratified, archived = historical)"
+    },
+    "legacy": {
+      "type": "boolean",
+      "description": "Is this a pre-schema document? If true, schema enforcement is lenient.",
+      "default": false
+    },
+    "legacy_note": {
+      "type": "string",
+      "description": "Human explanation of what's missing or non-standard in this legacy document"
+    },
+    "legacy_missing_fields": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of schema fields that are absent or incomplete (e.g., ['timestamp', 'proof'])"
+    },
+    "body": {
+      "type": "string",
+      "description": "Unstructured narrative (markdown)"
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "examples": [
+              "github_commit",
+              "prior_chronicle",
+              "external_url",
+              "internal_file"
+            ]
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "External references and citations"
+    }
+  }
+}
