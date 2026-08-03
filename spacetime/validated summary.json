@@ -1,0 +1,11 @@
+{
+  "version": "validated_hopf",
+  "n_hopf_pairs": 32,
+  "n_total_knots": 64,
+  "hopf_lk_mean_abs": 0.9947427236717138,
+  "hopf_lk_std": 6.262712137520458e-15,
+  "rs_m": 2949.9079999999994,
+  "g_rr_helix_max": 1.0000000180464619,
+  "deviation_max": 0.999999,
+  "wall_time_s": 48.4500846862793
+}

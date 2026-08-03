@@ -1,0 +1,11 @@
+{
+  "version": "highmass_100msun",
+  "mass_factor": 100,
+  "rs_m": 294990.8,
+  "r_min_m": 297940.708,
+  "r_max_m": 75000.0,
+  "hopf_lk_mean": 0.9947427236722117,
+  "g_rr_helix_max": 1.0000000000000178,
+  "deviation_max": 0.999999,
+  "wall_time_s": 48.491809129714966
+}

@@ -1,0 +1,15 @@
+{
+  "version": "scaled_5k_pairs",
+  "n_hopf_pairs": 500,
+  "n_segments": 150,
+  "n_total_knots": 1000,
+  "hopf_lk_mean": 0.9910027367090595,
+  "hopf_lk_std": 5.211162652181429e-15,
+  "rs_m": 2949.9079999999994,
+  "rho_max": 0.08918965046063171,
+  "g_rr_helix_max": 1.000005422790209,
+  "g_rr_helix_min": 1.0,
+  "td_helix_min": 0.9999955405473072,
+  "deviation_max": 0.999999,
+  "wall_time_s": 328.20387268066406
+}
