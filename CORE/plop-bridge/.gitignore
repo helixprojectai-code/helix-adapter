@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtualenv
+venv/
+
+# Runtime artifacts
+results/
+helix_imu_plop_results.json
+*.chain
+*.tgz
+*.log
