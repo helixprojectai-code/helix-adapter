@@ -1,9 +1,30 @@
-# RFC 0004: Cedar Model Routing — The Foundry Decision Mesh
+---
+id: research-2026-07-06-rfc-0004-cedar-routing
+type: research
+timestamp: 2026-07-06T00:00:00Z
+date: 2026-07-06
+author: Stephen Hope
+custodian: Steve Hope
+substrate: Helix-Adapter
+schema_version: v1.0.0
+constitutional_version: v1.0
+ratification_status: draft
+maturity: published
+category: rfc
+status: open
+tags:
+  - rfc
+  - rfc-0004
+  - cedar
+  - model-routing
+  - foundry
+severity: high
+routing:
+  target_node: LATTICE
+  action_required: false
+---
 
-**Status:** Draft (v0.1)
-**Author:** Stephen Hope (Helix-TTD Custodian)
-**Date:** July 6, 2026
-**Version:** 0.1
+# RFC 0004: Cedar Model Routing — The Foundry Decision Mesh
 
 ## Abstract
 

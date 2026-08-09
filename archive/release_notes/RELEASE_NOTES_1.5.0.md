@@ -1,7 +1,33 @@
+---
+id: release-2026-06-29-v1-5-0
+type: release
+timestamp: 2026-06-29T00:00:00Z
+date: 2026-06-29
+author: Stephen Hope
+custodian: Steve Hope
+substrate: Helix-Adapter
+schema_version: v1.0.0
+constitutional_version: v1.0
+ratification_status: ratified
+maturity: published
+category: release
+status: closed
+tags:
+  - release
+  - v1.5.0
+  - helixsession
+  - multi-turn
+  - tamper-evidence
+severity: high
+routing:
+  target_node: SPIDER
+  action_required: false
+---
+
 # helix-adapter v1.5.0 Release Notes
 
-**Released:** 2026-06-29
-**Branch:** spider-dev → main
+**Released:** 2026-06-29  
+**Branch:** spider-dev → main  
 **PyPI:** `pip install helix-adapter==1.5.0`
 
 ---

@@ -1,9 +1,30 @@
-# RFC 0003: Unified Policy Gating — Dual-Gate Containment with AWS Cedar
+---
+id: research-2026-06-26-rfc-0003-cedar-policy
+type: research
+timestamp: 2026-06-26T00:00:00Z
+date: 2026-06-26
+author: Stephen Hope
+custodian: Steve Hope
+substrate: Helix-Adapter
+schema_version: v1.0.0
+constitutional_version: v1.0
+ratification_status: draft
+maturity: published
+category: rfc
+status: open
+tags:
+  - rfc
+  - rfc-0003
+  - cedar
+  - policy-gating
+  - dual-gate
+severity: critical
+routing:
+  target_node: LATTICE
+  action_required: false
+---
 
-**Status:** Draft (v0.3)  
-**Author:** Stephen Hope (Helix-TTD Custodian)  
-**Date:** June 26, 2026  
-**Version:** 0.3
+# RFC 0003: Unified Policy Gating — Dual-Gate Containment with AWS Cedar
 
 ## Abstract
 

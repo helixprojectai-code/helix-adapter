@@ -1,0 +1,4 @@
+scheme,mode,samples,mean_ms,median_ms,min_ms,max_ms,std_ms,overhead_percentage
+ML-DSA-65,baseline,30,0.09776390000000003,0.0819375,0.053469,0.22866,0.0425959746481206,
+ML-DSA-65,topological_seed,30,0.0907695,0.0737445,0.056073,0.293978,0.04950599835625983,
+ML-DSA-65,topological_overhead,30,-0.006994400000000026,,,,,-7.154379070393083

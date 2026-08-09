@@ -1,7 +1,33 @@
+---
+id: release-2026-07-02-v1-7-0
+type: release
+timestamp: 2026-07-02T00:00:00Z
+date: 2026-07-02
+author: Stephen Hope
+custodian: Steve Hope
+substrate: Helix-Adapter
+schema_version: v1.0.0
+constitutional_version: v1.0
+ratification_status: ratified
+maturity: published
+category: release
+status: closed
+tags:
+  - release
+  - v1.7.0
+  - security-audit
+  - fable-5
+  - api-hardening
+severity: critical
+routing:
+  target_node: SPIDER
+  action_required: false
+---
+
 # helix-adapter v1.7.0 Release Notes
 
-**Released:** 2026-07-02
-**Branch:** claude/claude-code-linux-desktop-as4dm6 → main
+**Released:** 2026-07-02  
+**Branch:** claude/claude-code-linux-desktop-as4dm6 → main  
 **PyPI:** `pip install helix-adapter==1.7.0`
 
 ---

@@ -1,0 +1,23 @@
+{
+  "version": "monty_python_unreasonable",
+  "tagline": "The Unreasonable Universe",
+  "mass_solar": 1000000,
+  "rs_m": 2949907999.9999995,
+  "shell_width_m": 265491720.0,
+  "n_hopf_pairs": 200,
+  "n_total_knots": 400,
+  "hopf_lk_mean": 0.9821887856202005,
+  "rho_max": 2.8065880678416277e-22,
+  "g_rr_helix_max": 1.0,
+  "g_rr_helix_min": 1.0,
+  "td_helix_min": 1.0,
+  "deviation_max": 0.9900990099009901,
+  "wall_time_s": 30.443523406982422,
+  "notes": [
+    "What if we took every absurd parameter and pushed it?",
+    "1 million solar masses = Event Horizon larger than Earth's orbit",
+    "Knots packed inside the shell like sardines",
+    "Coupling alpha = 1.0 (no ashamed physics here)",
+    "'Tis but a scratch!' — the metric"
+  ]
+}

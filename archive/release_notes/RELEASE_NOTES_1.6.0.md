@@ -1,7 +1,33 @@
+---
+id: release-2026-06-30-v1-6-0
+type: release
+timestamp: 2026-06-30T00:00:00Z
+date: 2026-06-30
+author: Stephen Hope
+custodian: Steve Hope
+substrate: Helix-Adapter
+schema_version: v1.0.0
+constitutional_version: v1.0
+ratification_status: ratified
+maturity: published
+category: release
+status: closed
+tags:
+  - release
+  - v1.6.0
+  - merkle-tree
+  - dual-tamper-evidence
+  - append-only
+severity: high
+routing:
+  target_node: SPIDER
+  action_required: false
+---
+
 # helix-adapter v1.6.0 Release Notes
 
-**Released:** 2026-06-30
-**Branch:** spider-dev → main
+**Released:** 2026-06-30  
+**Branch:** spider-dev → main  
 **PyPI:** `pip install helix-adapter==1.6.0`
 
 ---

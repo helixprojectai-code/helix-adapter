@@ -1,9 +1,27 @@
 ---
-title: "RFC 0002 — Sparse Attention Masks and Entropy Dispersion Metrics for Constraining Information Flow"
-author: "Stephen Hope, Custodian"
-date: "2026-06-23"
-status: "Draft"
-version: "0.2"
+id: research-2026-06-23-rfc-0002-sparse-attention
+type: research
+timestamp: 2026-06-23T00:00:00Z
+date: 2026-06-23
+author: Stephen Hope
+custodian: Steve Hope
+substrate: Helix-Adapter
+schema_version: v1.0.0
+constitutional_version: v1.0
+ratification_status: draft
+maturity: published
+category: rfc
+status: open
+tags:
+  - rfc
+  - rfc-0002
+  - sparse-attention
+  - governance
+  - entropy-metrics
+severity: high
+routing:
+  target_node: LATTICE
+  action_required: false
 ---
 
 # RFC 0002: Sparse Attention Masks and Entropy Dispersion Metrics for Constraining Information Flow in Transformer Inference
