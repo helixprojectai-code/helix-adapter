@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-HELIX IMU-TO-PLOP BRIDGE v1.0.9
+HELIX IMU-TO-PLOP BRIDGE v1.0.10
 Operational bridge between topological IMU operator and PLOP-200 protocol.
 
 v1.0.1: Fixed packet padding escaping (was 716B not 200B), added baseline
@@ -87,6 +87,13 @@ Hybrid apex: loop rotation axis for planar paths, mean direction
 for conical paths, closing pair for closed loops. Small-circle
 analytic match preserved (<1e-6); great circles now report
 (1-cos theta)/2. Default --W-thresh 0.5 -> 0.02 (calibrated).
+v1.0.10: post-review hardening -- SVD planarity selector replaces
+the v1.0.9 dot-product gate (max|g@axis| < 1e-2 went blind at
+~0.5 deg of noise: winding collapsed 0.139 -> 0.0002);
+is_steady_rotation masks near-zero rows (an intermittently
+zeroing gyro could otherwise evade the gate); SO_REUSEADDR on
+Ring1 for rapid restart; final_yaw_deg renamed
+final_attitude_error_deg (qangle is total rotation, not yaw).
 See docs/CHANGELOG.md.
 
 When the spherical winding number |W[g_b]| crosses the constitutional threshold,
@@ -360,8 +367,21 @@ def compute_winding_number(g_b_trajectory):
     axis = np.sum(np.cross(b, c, axis=1), axis=0)
     a_norm = np.linalg.norm(axis)
     axis_u = axis / (a_norm + 1e-15)
-    if a_norm > 1e-12 and np.max(np.abs(g @ axis_u)) < 1e-2:
-        apex = axis_u            # planar path (great-circle family)
+    # v1.0.10: SVD planarity selector. The v1.0.9 dot-product gate
+    # (max|g@axis| < 1e-2) went blind at ~0.5 deg of noise (winding
+    # collapsed 0.139 -> 0.0002). PCA is robust: for any effectively
+    # 2D path (cone OR great circle) the best-fit plane normal IS
+    # the rotation axis; only genuinely 3D paths use the mean.
+    # s[0] > 0.1: the path must also have real angular extent -- a
+    # clustered noise blob is trivially 'planar' and its plane normal
+    # points through the blob (apex on the path -> fan explosion).
+    g_centered = g - g.mean(axis=0)
+    _, s, Vt = np.linalg.svd(g_centered, full_matrices=False)
+    planar_ratio = s[2] / (s[0] + 1e-15)
+    if a_norm > 1e-12 and planar_ratio < 0.1 and s[0] > 0.1:
+        apex = Vt[2]
+        if np.dot(apex, axis_u) < 0:
+            apex = -apex
     else:
         mean_dir = g.mean(axis=0)
         m_norm = np.linalg.norm(mean_dir)
@@ -437,8 +457,15 @@ def is_steady_rotation(omega_window, cv_thresh=0.15, axis_align_thresh_deg=15.0)
         # Negligible rotation -- if winding crossed threshold here, it
         # isn't explained by a steady commanded rotation. Don't suppress.
         return False
-    cv = np.std(mags) / mean_mag
-    axes = omega_window / (mags[:, None] + 1e-15)
+    # v1.0.10: mask near-zero rows before normalization -- a ~1e-12
+    # row amplifies to a ~1e3 spurious axis component and inflates
+    # the CV; an intermittently zeroing gyro during a commanded
+    # roll could otherwise evade the gate.
+    valid = mags > 1e-9
+    if np.count_nonzero(valid) < 3:
+        return False
+    cv = np.std(mags[valid]) / np.mean(mags[valid])
+    axes = omega_window[valid] / (mags[valid, None] + 1e-15)
     mean_axis_norm = np.linalg.norm(axes.mean(axis=0))  # 1.0 = perfectly steady axis
     axis_ok = mean_axis_norm > np.cos(np.deg2rad(axis_align_thresh_deg))
     return (cv < cv_thresh) and axis_ok
@@ -521,6 +548,9 @@ class Ring1Listener:
         self.port = port
         self.expected_hash = expected_hash
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # v1.0.10: rapid restart (systemd Restart=on-failure) must
+        # not race a lingering bind on the same port.
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind((host, port))
         self.sock.settimeout(0.001)
         self.packets_received = 0
@@ -752,7 +782,7 @@ def main():
             f"disabling detection and intermediate checkpoints")
 
     print("=" * 70)
-    print("HELIX IMU-TO-PLOP BRIDGE v1.0.9")
+    print("HELIX IMU-TO-PLOP BRIDGE v1.0.10")
     print("=" * 70)
     print(f"Trajectory: {args.traj} | Duration: {args.duration}h | Rate: {args.rate}Hz")
     print(f"Window: {args.window} samples | W-threshold: {args.W_thresh}")
@@ -771,7 +801,9 @@ def main():
                 yield row_om, row_ac
 
     om_ac_iter = om_ac_source()
-    om0, ac0 = next(om_ac_iter)  # sample 0: only ever used to seed omega_history below
+    om0, ac0 = next(om_ac_iter)  # sample 0: om0 seeds omega_history; ac0 is
+    # intentionally dropped from position integration (1-sample lag,
+    # bounded by dt * |a|, negligible at N large)
 
     # Initialize Ring 1 listener (locked to this run's baseline hash)
     ring1 = Ring1Listener(expected_hash=args.baseline_hash)
@@ -834,7 +866,7 @@ def main():
                 "dropped": ring1.packets_dropped
             },
             "metrics": {
-                "final_yaw_deg": float(ye_partial[0]),
+                "final_attitude_error_deg": float(ye_partial[0]),  # v1.0.10: qangle is total rotation, not yaw
                 "final_pos_m": float(pe_partial),
                 "W_min": float(min(W_history)) if W_history else 0,
                 "W_max": float(max(W_history)) if W_history else 0
