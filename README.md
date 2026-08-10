@@ -317,6 +317,29 @@ Red-teamed against the full Pliny jailbreak toolkit: GODMODE boundary inversion,
 Parseltongue encoding, refusal inversion, OG GODMODE l33t, authority impersonation,
 and syntactic bypass attacks. All held.
 
+## Physical Layer & Research Components (v1.7.5)
+
+Three production components and the research layer they emerged from are
+documented in this repository:
+
+- **CORE/plop** — Precision Linked Orientation Protocol: fail-closed IMU
+  geometry bridge, production v1.0.10 on CORE. 50 h soak at flat ~75 MB RSS,
+  42 tests. → `docs/CORE_PLOP.md`, `CORE/plop-bridge/docs/`
+- **PQC-Engine** — HELIX Hybrid Topological Post-Quantum Crypto Engine:
+  braid root of trust in SU(8), dual-layer defense (lattice + #P-hard
+  topological invariants), governance as topological entanglement.
+  Validated + benchmarked, Zenodo DOI'd. → `docs/PQC_ENGINE.md`, `PQC-Engine/`
+- **Spacetime** — constitutional topological gravity simulations: four
+  campaigns validated; knot density couples to the metric (5 ppm curvature
+  at 10× density), mass does not. → `docs/SPACETIME.md`, `spacetime/`
+- **Research layer** — Oxford battery continuum (1-D electrode model,
+  Helix 300 Hz / 4-phase Master Reset vs Butler-Volmer; whitepaper with
+  DOI), battery-continuum research notes, TRACE schema set, RFC library.
+  → `oxford/`, `research/`, `docs/schemas/`, `docs/rfc/`
+
+> Artifact directories land on `build-dev` with the next main merge
+> (they live on `main` via PR #23).
+
 Five-layer defense: constitutional prompt invariants, expanded marker extraction,
 post-response compliance validation, marker-coverage blind-spot fix, and compare endpoint authorization.
 

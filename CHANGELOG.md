@@ -7,6 +7,24 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.7.5] — 2026-08-10
+
+### Added / Changed
+
+- **Documentation alignment release.** New component docs: `docs/CORE_PLOP.md`
+  (PLOP bridge v1.0.10), `docs/PQC_ENGINE.md` (Hybrid Topological PQC
+  Engine — validated, benchmarked, DOI'd), `docs/SPACETIME.md` (constitutional
+  topological gravity — four validated campaigns).
+- **Components documented, artifacts on main.** The component directories
+  (`PQC-Engine/`, `spacetime/`, `oxford/`, `research/`, `docs/schemas/`,
+  `docs/rfc/`) live on `main` (PR #23) and arrive on `build-dev` at the
+  next main merge; this release aligns the documentation with them.
+- **README / ARCHITECTURE** now index the physical layer and research
+  components. `pyproject.toml` → 1.7.5.
+- No public API surface or constitutional prompt invariant changes.
+
+---
+
 ## [1.7.4] — 2026-07-10
 
 ### Added / Changed
