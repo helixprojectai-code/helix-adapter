@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-HELIX IMU-TO-PLOP BRIDGE v1.0.8
+HELIX IMU-TO-PLOP BRIDGE v1.0.9
 Operational bridge between topological IMU operator and PLOP-200 protocol.
 
 v1.0.1: Fixed packet padding escaping (was 716B not 200B), added baseline
@@ -79,6 +79,14 @@ closed for --duration, through a different door). And a window >=
 total sample count silently disabled the detection gate and
 intermediate checkpoints. All float args are now finite-checked,
 rate must be > 0, and window must be < N.
+v1.0.9: compute_winding_number() apex is no longer the window's
+own first sample -- it was ON the loop, so great-circle loops
+(canonical barrel-roll geometry) summed to exactly 0.0, blinding
+the detector to its largest excursion (FINDING 2026-08-10).
+Hybrid apex: loop rotation axis for planar paths, mean direction
+for conical paths, closing pair for closed loops. Small-circle
+analytic match preserved (<1e-6); great circles now report
+(1-cos theta)/2. Default --W-thresh 0.5 -> 0.02 (calibrated).
 See docs/CHANGELOG.md.
 
 When the spherical winding number |W[g_b]| crosses the constitutional threshold,
@@ -326,16 +334,38 @@ def compute_winding_number(g_b_trajectory):
     healthy telemetry. Returning NaN here makes it the caller's problem
     to handle explicitly (see topological_surgery and the main loop's
     fault check) instead of a value that reads as "nothing happening."
+
+    v1.0.9: apex is no longer the window's own first sample -- it
+    was ON the loop, so any great-circle loop (the canonical
+    barrel-roll geometry: roll axis perpendicular to gravity) had
+    every fan triangle degenerate and summed to exactly 0.0,
+    blinding the detector to the largest excursions (FINDING
+    2026-08-10). Apex is now the loop's own rotation axis for
+    planar paths and the mean direction for conical paths --
+    never a path point -- with the closing pair added for closed
+    loops. Small-circle analytic match preserved (<1e-6);
+    great-circle loops now report (1-cos theta)/2 instead of 0.
     """
     M = len(g_b_trajectory)
     if M < 3: return 0.0
     if not np.all(np.isfinite(g_b_trajectory)):
         return float('nan')
     g = g_b_trajectory / (np.linalg.norm(g_b_trajectory, axis=1, keepdims=True) + 1e-15)
-    apex = g[0]
-    # v1.0.5: the per-triangle loop is a pure array expression -- the
-    # fan sum telescopes into element-wise ops, identical math.
+    # v1.0.9: hybrid apex -- never a path point (see docstring).
+    close = float(np.dot(g[0], g[-1])) > 0.999  # returns to start
     b, c = g[:-1], g[1:]
+    if close:
+        b = np.concatenate([b, g[-1:]])
+        c = np.concatenate([c, g[:1]])
+    axis = np.sum(np.cross(b, c, axis=1), axis=0)
+    a_norm = np.linalg.norm(axis)
+    axis_u = axis / (a_norm + 1e-15)
+    if a_norm > 1e-12 and np.max(np.abs(g @ axis_u)) < 1e-2:
+        apex = axis_u            # planar path (great-circle family)
+    else:
+        mean_dir = g.mean(axis=0)
+        m_norm = np.linalg.norm(mean_dir)
+        apex = mean_dir / (m_norm + 1e-15) if m_norm > 1e-9 else axis_u
     cross_bc = np.cross(b, c, axis=1)
     triple = cross_bc @ apex
     denom = 1.0 + (b @ apex) + np.einsum('ij,ij->i', b, c) + (c @ apex)
@@ -652,7 +682,7 @@ def main():
     parser.add_argument("--rate", type=int, default=100, help="Hz")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--window", type=int, default=10000, help="samples for W computation")
-    parser.add_argument("--W-thresh", type=float, default=0.5, help="winding threshold")
+    parser.add_argument("--W-thresh", type=float, default=0.02, help="winding threshold (v1.0.9: 0.02 calibrated default, see FINDING 2026-08-10)")
     parser.add_argument("--baseline-hash", type=int, default=0xA1B2C3D4, help="locked baseline")
     parser.add_argument("--emit-udp", action="store_true", help="emit real UDP packets")
     parser.add_argument("--output", default="helix_imu_plop_results.json")
@@ -722,7 +752,7 @@ def main():
             f"disabling detection and intermediate checkpoints")
 
     print("=" * 70)
-    print("HELIX IMU-TO-PLOP BRIDGE v1.0.8")
+    print("HELIX IMU-TO-PLOP BRIDGE v1.0.9")
     print("=" * 70)
     print(f"Trajectory: {args.traj} | Duration: {args.duration}h | Rate: {args.rate}Hz")
     print(f"Window: {args.window} samples | W-threshold: {args.W_thresh}")

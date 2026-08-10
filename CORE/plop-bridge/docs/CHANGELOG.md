@@ -19,8 +19,7 @@
   checkpoints, and no warning. Now rejected at startup (window must be
   < total samples).
 - All six new cases added to test_cli_validation.py (exit 2 + message
-  asserted — 12 rejection cases total in that test). Full suite: 32
-  tests, all green, standalone runners exit 0.
+  asserted). 38 tests total, all green.
 
 ## v1.0.7 — 2026-08-09 (red team)
 
