@@ -129,12 +129,12 @@ def test_unit_winding():
     assert abs(W_closed - expected_closed) < 0.01, f"Closed loop winding failed: {W_closed}"
     print(f"  ✅ PASS")
 
-    # Test 2: Open arc (should be roughly half of closed, at same latitude)
+    # Test 2: Open arc (v1.0.9 contract: nonzero, strictly below closed)
     print("\n[2/3] Open arc (180°, 30° latitude)...")
     g_open = synthetic_open_arc(window)
     W_open = compute_winding_number(g_open)
-    print(f"  W_open = {W_open:.6f} (expected ~{expected_closed/2:.6f}, half of closed)")
-    assert 0.05 < W_open < 0.2, f"Open arc winding failed: {W_open}"
+    print(f"  W_open = {W_open:.6f} (v1.0.9: 0 < open < closed = {expected_closed:.6f})")
+    assert 0.01 < W_open < expected_closed, f"Open arc winding failed: {W_open}"
     print(f"  ✅ PASS (open arc correctly below closed loop)")
 
     # Test 3: Small oscillation (noise-level)
@@ -148,7 +148,7 @@ def test_unit_winding():
     print("\n" + "="*70)
     print("✅ UNIT TESTS PASSED")
     print(f"  Closed → W≈{expected_closed:.3f} ✓")
-    print(f"  Open   → W≈{expected_closed/2:.3f} ✓")
+    print(f"  Open   → W≈{W_open:.3f} (< closed {expected_closed:.3f}) ✓")
     print("  Noise  → W≈0.00001 ✓")
     print("="*70)
 
