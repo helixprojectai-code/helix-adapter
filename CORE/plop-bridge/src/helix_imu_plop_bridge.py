@@ -313,8 +313,9 @@ def generate_om_ac_stream(N, dt, traj, seed=42, chunk_size=50000):
 # =============================================================================
 
 def compute_winding_number(g_b_trajectory):
-    """Fan-triangulated solid angle swept by the window, apex = window's
-    own first sample (g[0]), summed over consecutive pairs.
+    """Fan-triangulated solid angle swept by the window, apex = the path's
+    own rotation axis (SVD best-fit plane normal; see v1.0.9/v1.0.10 notes
+    below for the hybrid selector), summed over consecutive pairs.
 
     Each term is the Van Oosterom-Strackee solid angle of the spherical
     triangle (apex, g[i], g[i+1]); this is a valid decomposition of total
