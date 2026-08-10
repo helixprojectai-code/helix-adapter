@@ -1,0 +1,36 @@
+{
+  "experiment": "HELIX Hybrid Topological PQC Engine",
+  "matrix_dimension": "8x8",
+  "strands": 8,
+  "braid_word": [
+    1,
+    3,
+    5,
+    7,
+    -6,
+    4,
+    -2,
+    5,
+    3,
+    1
+  ],
+  "crossings": 10,
+  "writhe": 6,
+  "trace": "(-1+0j)",
+  "trace_magnitude": 1.0,
+  "unitarity_error": 7.374195032383568e-09,
+  "seed_function": "SHA-512(Trace(U(B)) || B || nonce)",
+  "receipt_function": "SHA-256(B || sigma)",
+  "entropy_samples": 1000,
+  "pqc_samples": 30,
+  "bkz_block_sizes": [
+    20,
+    40,
+    60
+  ],
+  "lattice_dimension": 64,
+  "rhf_definition": "hermite_factor = ||b1|| / det(L)^(1/n); root_hermite_factor_raw = hermite_factor^(1/(n-1)) (can be < 1 for this diagonal-dominant, non-q-ary lattice); root_hermite_factor = max(delta_raw, 1/delta_raw), the publication-safe value (always >= 1).",
+  "determinant_handling": "Stable logarithmic determinant calculation using numpy.linalg.slogdet (fpylll's exact det() attempted first). The natural log-determinant and base-10 determinant magnitude are retained to avoid overflow.",
+  "interpretation_note": "BKZ results represent empirical reduction of a deterministic diagonal-dominant integer lattice derived from the fixed 8x8 topological matrix and braid word. This lattice is not a q-ary lattice, so the standard 'delta ~ 1.01' RHF intuition does not apply; root_hermite_factor_raw can legitimately fall below 1.0 here, and root_hermite_factor (>= 1) is reported as the publication-safe quantity. Identical first_vector_norm across block sizes reflects max_loops=1 on an already LLL-optimal basis (see stability_note in rhf_results.csv), not a benchmark artifact. These values are empirical proxies and do not constitute a formal ML-KEM or ML-DSA security proof.",
+  "state_sum_note": "The Kauffman/Jones section is a computational state-space complexity benchmark based on 2^c state enumeration and should not be interpreted as a formal exact Jones polynomial evaluation of the fixed braid diagram."
+}

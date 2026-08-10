@@ -10,6 +10,8 @@ import json
 import time
 import unicodedata
 
+from .markers import validate_response
+
 
 def _nfc(obj):
     """Recursively normalize string values to Unicode NFC form."""
@@ -148,6 +150,7 @@ def make_receipt(
         time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ts))
         + f".{int((ts % 1) * 1_000_000_000):09d}Z"
     )
+    compliance = validate_response(assistant_response)
     receipt = {
         "exchange_id": hashlib.sha256((payload + str(ts)).encode()).hexdigest()[:16],
         "timestamp": timestamp,
@@ -160,6 +163,8 @@ def make_receipt(
         "drift_method": drift_method,
         "temperature": temperature,
         "cedar": cedar_status or {"active": False, "status": "not_configured", "error": None},
+        "constitutional_compliant": compliance["compliant"],
+        "constitutional_issues": compliance["issues"],
     }
     receipt["canonical_version"] = "1.0"
     # Self-hash: the receipt seals itself (hash field is NOT part of the canonical content)

@@ -1,0 +1,18 @@
+========================================================================
+Oxford Battery Long-Horizon Matrix
+Results → /home/steve/oxford_battery_job/results
+========================================================================
+  → D1e-14_C3_std_T3600 ... max_R=361666.75  R_surf=361666.75  Δc=0.04588  wall=2201.8s
+  → D1e-14_C3_helix_T3600 ... max_R=0.62  R_surf=0.54  Δc=0.00000  wall=2594.7s
+  → D1e-14_C5_std_T3600 ... max_R=235659.40  R_surf=235659.40  Δc=0.38851  wall=2200.6s
+  → D1e-14_C5_helix_T3600 ... max_R=0.50  R_surf=0.40  Δc=0.00000  wall=2580.2s
+  → D5e-15_C3_std_T3600 ... max_R=361724.54  R_surf=361724.54  Δc=0.04590  wall=2198.4s
+  → D5e-15_C3_helix_T3600 ... max_R=0.62  R_surf=0.54  Δc=0.00000  wall=2580.3s
+  → D5e-15_C5_std_T3600 ... max_R=235039.47  R_surf=235039.47  Δc=0.38861  wall=2197.3s
+  → D5e-15_C5_helix_T3600 ... max_R=0.50  R_surf=0.40  Δc=0.00000  wall=2580.2s
+  → D1e-15_C3_std_T3600 ... max_R=361765.70  R_surf=361765.70  Δc=0.04590  wall=2199.9s
+  → D1e-15_C3_helix_T3600 ... max_R=0.62  R_surf=0.54  Δc=0.00000  wall=2580.4s
+  → D1e-15_C5_std_T3600 ... max_R=234593.52  R_surf=234593.52  Δc=0.38864  wall=2202.0s
+  → D1e-15_C5_helix_T3600 ... max_R=0.50  R_surf=0.40  Δc=0.00000  wall=2580.9s
+  → D5e-16_C3_std_T3600 ... max_R=361772.02  R_surf=361772.02  Δc=0.04590  wall=2203.8s
+  → D5e-16_C3_helix_T3600 ... 

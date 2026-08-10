@@ -203,6 +203,8 @@ def test_receipt_canonicalization_spec_v1_0():
         "routing_decision": None,
         "routing_matched_policy": None,
         "routing_policy_version": None,
+        "constitutional_compliant": True,
+        "constitutional_issues": [],
     }
     # Compute hash from core content (excluding integrity fields that are added later)
     core_for_hash = {
