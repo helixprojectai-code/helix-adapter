@@ -127,10 +127,10 @@ def test_end_to_end_fault_path():
     # metrics as if nothing happened. Since the fault fires at ingestion
     # (sample 30), before q is ever touched by the bad sample, yaw/pos
     # should reflect real (clean, pre-fault) integrated state, not NaN.
-    assert np.isfinite(data["metrics"]["final_yaw_deg"]), (
-        "checkpoint metrics went NaN -- ingestion-point check should prevent this")
-    print(f"  ✅ PASS (checkpoint metrics are clean, not NaN-poisoned -- "
-          f"caught before propagation, final_yaw_deg={data['metrics']['final_yaw_deg']:.6f})")
+    assert np.isfinite(data["metrics"]["final_attitude_error_deg"]), (
+        "fault checkpoint metric must be finite (the fault must be "
+        "caught before propagation, "
+        f"final_attitude_error_deg={data['metrics']['final_attitude_error_deg']:.6f})")
 
 
 if __name__ == "__main__":

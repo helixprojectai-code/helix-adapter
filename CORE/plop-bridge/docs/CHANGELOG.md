@@ -1,5 +1,50 @@
 # PLOP Bridge Changelog
 
+## v1.0.10 — 2026-08-10 (post-review hardening)
+
+- **SVD planarity selector** replaces the v1.0.9 dot-product gate
+  (`max|g·axis| < 1e-2`) in `compute_winding_number()`. The dot-product
+  gate went blind at ~0.5° of noise — measured winding collapsed
+  0.139 → 0.0002 on a perturbed barrel roll (independent review
+  2026-08-10). PCA planarity (`s2/s0 < 0.1`) with an angular-extent
+  guard (`s0 > 0.1`) is robust: noisy barrel rolls keep their winding,
+  cones and great circles stay exact, and clustered noise blobs stay
+  quiet (the extent guard keeps the SVD branch from firing on a blob,
+  whose plane normal points through the path — apex on the path
+  exploded the fan).
+- **is_steady_rotation near-zero mask**: near-zero rows no longer
+  normalize to spurious ~1e3 axis components; an intermittently zeroing
+  gyro during a commanded roll can no longer evade the gate.
+- **SO_REUSEADDR** on Ring1Listener (rapid-restart bind races).
+- **final_yaw_deg → final_attitude_error_deg**: qangle() returns total
+  rotation angle, not yaw — the metric is now named truthfully.
+- Tests: test_v110_hardening.py (noisy-barrel robustness, noise-blob
+  quietness, gate tolerance). Suite: 40 tests.
+
+## v1.0.9 — 2026-08-10 (winding operator fix, FINDING 2026-08-10)
+
+- **Great-circle degeneracy fixed.** `compute_winding_number()` used the
+  window's own first sample as fan apex — a point ON the loop — so any
+  great-circle loop (canonical barrel-roll geometry: roll axis ⊥ gravity)
+  had every fan triangle degenerate and summed to exactly 0.0. Measured:
+  real barrel-roll windows showed max |W| = 2e-5 instead of the ~0.14
+  their geometry demands. The v1.0.3 steady-rotation gate had nothing to
+  suppress, and the default threshold (0.5) was unreachable for any
+  single loop (W = (1−cos θ)/2 peaks just under 0.5 as θ→90°, collapsing
+  to 0 at exactly 90°).
+- **Hybrid apex:** the loop's own rotation axis for planar
+  (great-circle family) paths, the mean direction for conical paths,
+  with the closing pair added for closed loops. Small-circle analytic
+  match preserved (<1e-6); great circles now report (1−cos θ)/2;
+  partial arcs are monotone and bounded by the cap; real barrel-roll
+  windows read ~0.14/window (was 2e-5).
+- **Default --W-thresh 0.5 → 0.02** (calibrated 2026-08-10): catches
+  half-loops of 30° cones and shallow sweeps with 100×+ margin over the
+  measured noise floor (stationary 2e-11, vibration ~7e-4). The steady
+  gate remains the guard against commanded maneuvers — and now has
+  something to guard.
+- Tests: test_winding_v109.py (5 regression guards). Suite: 39 tests.
+
 ## v1.0.8 — 2026-08-09 (counter red-team, Hermes)
 
 - **NaN/Inf CLI floats bypassed every v1.0.7 validator.** The guards used
@@ -19,7 +64,8 @@
   checkpoints, and no warning. Now rejected at startup (window must be
   < total samples).
 - All six new cases added to test_cli_validation.py (exit 2 + message
-  asserted). 38 tests total, all green.
+  asserted — 12 rejection cases total in that test). Full suite: 32
+  tests, all green, standalone runners exit 0.
 
 ## v1.0.7 — 2026-08-09 (red team)
 
