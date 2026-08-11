@@ -742,6 +742,12 @@ def main():
                          help="file containing the checkpoint-chain HMAC key (hex or raw utf-8). "
                               "Falls back to PLOP_CHAIN_KEY env var if not given. Required -- "
                               "see docs/CHANGELOG.md v1.0.7.")
+    parser.add_argument("--recent-events", type=int, default=50,
+                         help="how many most-recent surgery/plop/suppressed entries to keep "
+                              "inline in the checkpoint JSON (v1.0.11: R2 finding -- these were "
+                              "rewritten in full every checkpoint, O(n) per write / O(n^2) per "
+                              "run under a high event rate; full history now goes to append-only "
+                              ".jsonl journals instead, see docs/CHANGELOG.md)")
     args = parser.parse_args()
 
     # v1.0.7: reject bad config up front instead of crashing deep in a
@@ -778,6 +784,10 @@ def main():
             f"--rate must be > 0 (got {args.rate}) -- rate 0 divides by "
             f"zero (dt = 1/rate); a negative rate makes N negative, "
             f"exhausting the sample generator before the first sample")
+    if args.recent_events < 0:
+        parser.error(
+            f"--recent-events must be >= 0 (got {args.recent_events}) -- "
+            f"it bounds a deque(maxlen=...), which rejects negative values")
 
     # Fail fast: resolve the chain key before doing any real work, not
     # hours into a run at the first checkpoint write. See _get_chain_key().
@@ -862,11 +872,50 @@ def main():
     p = np.zeros(3)
 
     # Tracking
-    plop_log = []
-    surgery_log = []
-    suppressed_log = []  # threshold crossings suppressed by the steady-rotation gate
+    #
+    # v1.0.11 (R2 finding, confirmed live: 22.6ms/checkpoint @ 1k events ->
+    # 6.70s/checkpoint @ 250k, clean linear -- see docs/CHANGELOG.md):
+    # plop_log/surgery_log/suppressed_log used to be plain unbounded lists,
+    # embedded wholesale into the checkpoint JSON and re-serialized in full
+    # on every single write_checkpoint() call. Under a high event rate that
+    # makes each checkpoint O(n) in total events so far, and the whole run
+    # O(n^2) since checkpoints fire every window with the log only growing.
+    # The .chain journal already solved this exact problem correctly
+    # (append-only, one line per checkpoint, never rewritten) -- these three
+    # just never got the same treatment. Now: bounded deques hold only the
+    # `--recent-events` most recent entries for at-a-glance checkpoint
+    # visibility (O(1) to serialize regardless of run length); full history
+    # goes to append-only <output>.{surgeries,plops,suppressed}.jsonl
+    # journals, one line per event, same pattern as .chain. Separate
+    # counters track the true total since the deques evict silently.
+    #
+    # faults_log is NOT part of this fix -- fail_fault() calls sys.exit(1)
+    # immediately after appending, so it's naturally bounded to at most 1
+    # entry ever. Converting it would only break its existing test for no
+    # benefit.
+    plop_log = deque(maxlen=args.recent_events)
+    surgery_log = deque(maxlen=args.recent_events)
+    suppressed_log = deque(maxlen=args.recent_events)  # threshold crossings suppressed by the steady-rotation gate
+    plop_count = 0
+    surgery_count = 0
+    suppressed_count = 0
     faults_log = []  # v1.0.7: corrupted-input / non-finite-state detections, see fail_fault()
-    W_history = []
+
+    def _append_journal(suffix, event):
+        """O(1) append to <output>.<suffix>.jsonl -- same pattern as the
+        .chain journal (:935-936), just for event records instead of
+        chain-linkage lines."""
+        with open(f"{args.output}.{suffix}.jsonl", "a") as jf:
+            jf.write(json.dumps(event, sort_keys=True, separators=(',', ':')) + "\n")
+
+    # v1.0.11: same O(n)-per-checkpoint shape, smaller magnitude -- min()/
+    # max() over the full W_history list every write_checkpoint() call.
+    # Cheap per element (floats, not nested dicts) so not the dominant cost
+    # the event logs were, but same bug class and free to fix: track
+    # running min/max incrementally instead of rescanning. W_history itself
+    # was never used for anything but these two reductions.
+    w_min = float('inf')
+    w_max = float('-inf')
     # Bounded history: only the last `window` quaternions are ever used for
     # winding computation, so a ring buffer keeps memory flat regardless of
     # simulation duration (was an unbounded list — ~830MB+ at 24h/300Hz).
@@ -904,10 +953,10 @@ def main():
             "config": vars(args),
             "complete": complete,
             "last_sample": sample_idx,
-            "surgeries": surgery_log,
-            "suppressed": suppressed_log,
+            "surgeries": {"count": surgery_count, "recent": list(surgery_log)},
+            "suppressed": {"count": suppressed_count, "recent": list(suppressed_log)},
             "faults": faults_log,
-            "plops": plop_log,
+            "plops": {"count": plop_count, "recent": list(plop_log)},
             "ring1": {
                 "received": ring1.packets_received,
                 "verified": ring1.packets_verified,
@@ -916,8 +965,8 @@ def main():
             "metrics": {
                 "final_attitude_error_deg": float(ye_partial[0]),  # v1.0.10: qangle is total rotation, not yaw
                 "final_pos_m": float(pe_partial),
-                "W_min": float(min(W_history)) if W_history else 0,
-                "W_max": float(max(W_history)) if W_history else 0
+                "W_min": w_min if w_min != float('inf') else 0,
+                "W_max": w_max if w_max != float('-inf') else 0
             }
         }
         chain_state["index"] += 1
@@ -1015,7 +1064,11 @@ def main():
             if not np.isfinite(W):
                 fail_fault("NON_FINITE_WINDING", f"W={W}", i)
 
-            W_history.append(float(W))
+            w_val = float(W)
+            if w_val < w_min:
+                w_min = w_val
+            if w_val > w_max:
+                w_max = w_val
 
             # DEBUG: Print gravity trajectory sample
             if i == args.window:  # First topological check
@@ -1036,10 +1089,13 @@ def main():
             if did_surgery and not args.no_steady_gate:
                 omega_window = np.array(list(omega_history))
                 if is_steady_rotation(omega_window, args.steady_cv_thresh, args.steady_axis_thresh_deg):
-                    suppressed_log.append({
+                    suppressed_event = {
                         "sample": i, "time_hr": i * dt / 3600, "W": float(W),
                         "axis": axis.tolist(), "reason": "steady_rotation"
-                    })
+                    }
+                    suppressed_log.append(suppressed_event)
+                    suppressed_count += 1
+                    _append_journal("suppressed", suppressed_event)
                     print(f"  [SUPPRESSED] t={i*dt/3600:.2f}h | W={W:.4f} | "
                           f"steady rotation detected, not applying surgery")
                     did_surgery = False
@@ -1071,12 +1127,17 @@ def main():
                         "ring1_receipt": receipt[1] if receipt and receipt[0] else str(receipt)
                     }
                     plop_log.append(plop_event)
+                    plop_count += 1
+                    _append_journal("plops", plop_event)
 
                     # Apply surgery
                     q = q_surgery
-                    surgery_log.append({
+                    surgery_event = {
                         "sample": i, "time_hr": i*dt/3600, "W": float(W), "axis": axis.tolist()
-                    })
+                    }
+                    surgery_log.append(surgery_event)
+                    surgery_count += 1
+                    _append_journal("surgeries", surgery_event)
 
                     print(f"  [PLOP] t={i*dt/3600:.2f}h | W={W:.4f} | Lk={int(np.sign(W)):+d} | "
                           f"hash=0x{args.baseline_hash:08X} | receipt={receipt}")
@@ -1095,17 +1156,17 @@ def main():
     print("BRIDGE COMPLETE")
     print(f"{'='*70}")
     print(f"Runtime: {elapsed:.1f}s")
-    print(f"Surgeries: {len(surgery_log)}")
-    print(f"Suppressed (steady rotation): {len(suppressed_log)}")
-    print(f"PLOP packets emitted: {len(plop_log)}")
+    print(f"Surgeries: {surgery_count}")
+    print(f"Suppressed (steady rotation): {suppressed_count}")
+    print(f"PLOP packets emitted: {plop_count}")
     print(f"Ring 1 received: {ring1.packets_received}")
     print(f"Ring 1 verified: {ring1.packets_verified}")
     print(f"Ring 1 dropped: {ring1.packets_dropped}")
     print(f"Final yaw error: {ye[0]:.4f} deg")
     print(f"Final position error: {pe:.2f} m")
 
-    if W_history:
-        print(f"W range: [{min(W_history):.4f}, {max(W_history):.4f}]")
+    if w_min != float('inf'):
+        print(f"W range: [{w_min:.4f}, {w_max:.4f}]")
 
     # Final checkpoint, marked complete
     write_checkpoint(N - 1, complete=True)
