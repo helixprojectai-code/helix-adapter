@@ -1,5 +1,58 @@
 # PLOP Bridge Changelog
 
+## v1.0.11 — 2026-08-11 (checkpoint hardening + O(1) fix, R1/R4)
+
+- **BREAKING: checkpoint `surgeries`/`plops`/`suppressed` fields are now
+  objects, not lists.** Was `"surgeries": [...]` (full history, every
+  event, every checkpoint); now `"surgeries": {"count": N, "recent":
+  [...]}` — `count` is the true total, `recent` holds only the last
+  `--recent-events` entries (default 50). Full history lives in the new
+  append-only `<output>.surgeries.jsonl` journal instead (one line per
+  event, same pattern as `.chain`). Same shape change for `plops` and
+  `suppressed`. **Any out-of-tree tooling reading these fields as a bare
+  list will break on upgrade** — dashboards, log parsers, post-processing
+  scripts. `faults` is unchanged (still a plain list; naturally bounded
+  to ≤1 entry since `fail_fault()` exits right after appending).
+- **Fixed: `write_checkpoint()` was O(n) per call in accumulated
+  events**, not O(1) (R2 finding, 2026-08-11). `surgery_log`/`plop_log`/
+  `suppressed_log` were unbounded lists, rewritten wholesale into the
+  checkpoint JSON on every single call — confirmed 22.6ms/checkpoint at
+  1,000 accumulated events scaling to 6.70s at 250,000 (clean linear),
+  both via an isolated probe of the real `_content_hash()`/`json.dump`
+  path and a live 5,000-checkpoint torture run. Root cause: the `.chain`
+  journal already solved this exact problem correctly (append-only,
+  O(1)); the event logs just never got the same treatment. Fixed by
+  applying that pattern to all three. Live before/after on an identical
+  workload (5M samples, 4,982 surgeries, same seed): 1,217.2s → 754.7s,
+  38% faster — and the gap widens further past this scale.
+- **Fixed: `W_min`/`W_max` rescanned the full `W_history` list every
+  checkpoint** (`min()`/`max()` over floats — same O(n) bug class as
+  above, cheaper per-element so not the dominant cost, but free to fix).
+  Replaced with running min/max tracked incrementally; `W_history`
+  itself is gone, it had no other consumers.
+- **Fixed: `verify_checkpoint()` could raise instead of returning
+  `(False, reason)`.** The field-access/validation body sat outside the
+  `try/except` that only covered `json.load()` — valid JSON shaped wrong
+  (a bare list, a dict with a non-dict `'chain'`) raised
+  `AttributeError`/`TypeError` straight out of the function instead of
+  failing closed. Now wrapped; reports `MALFORMED: <reason>`.
+- **Added: instance lockfile.** Nothing previously stopped two bridge
+  processes from running against the same `--output` concurrently —
+  interleaved writes into one chain, non-monotonic `chain.index`.
+  Non-blocking exclusive `flock` on `<output>.lock`, acquired right
+  after CLI validation, held for the process lifetime; a second instance
+  is refused outright with a clean error instead of corrupting the
+  chain. POSIX-only (`fcntl`), consistent with this bridge's existing
+  systemd/Linux assumptions. `open()` failures (read-only parent dir)
+  are caught and reported the same clean way as a lock conflict.
+- **Added: `--recent-events`** (default 50) — governs the bound above.
+- Tests: `test_checkpoint_scaling.py` (new — flat-cost proof + journal/
+  count integration check), `test_instance_lock.py` (new), 4 new cases
+  in `test_checkpoint_chain.py`. Suite: 48 tests.
+- R1 pair: Spider (build) + Kimi (review). R4 (this O(1) fix) assigned
+  directly by the Custodian after R2's diagnostic closed; also
+  Kimi-reviewed. See `lattice/docs/ROUNDS.md` for round history.
+
 ## v1.0.10 — 2026-08-10 (post-review hardening)
 
 - **SVD planarity selector** replaces the v1.0.9 dot-product gate
