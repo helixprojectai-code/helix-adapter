@@ -797,8 +797,16 @@ def main():
     # SIGKILL -- no explicit unlock path needed). POSIX-only (fcntl),
     # consistent with the rest of this bridge's systemd/Linux
     # assumptions (SO_REUSEADDR, Restart=on-failure).
+    # v1.0.11 (Kimi review): open() itself can raise OSError (read-only
+    # parent dir, bad permissions) -- a new failure mode this lockfile
+    # introduces (a pre-existing --output file could previously mask a
+    # read-only dir; the lockfile can't). Give it the same clean
+    # parser.error() exit as a genuine lock conflict, not a raw traceback.
     lock_path = f"{args.output}.lock"
-    lock_fd = open(lock_path, "w")
+    try:
+        lock_fd = open(lock_path, "w")
+    except OSError as e:
+        parser.error(f"cannot create lockfile {lock_path}: {e}")
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:

@@ -32,9 +32,21 @@ def test_second_instance_refused_while_first_holds_lock():
     first = subprocess.Popen(_bridge_args(out), cwd=SRC_DIR,
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
-        # Give it time to get past CLI validation and acquire the lock,
-        # before it has a chance to finish (duration is short on purpose).
-        time.sleep(0.15)
+        # v1.0.11 (Kimi review): poll for the lockfile actually being
+        # written (PID present) instead of a fixed sleep -- a flat
+        # 0.15s assumed the first process clears argparse + lock
+        # acquisition in that window, which flakes under CI/parallel
+        # load. Poll up to 10s; the lock write itself is near-instant
+        # once the process gets there.
+        lock_path = out + ".lock"
+        t0 = time.time()
+        while time.time() - t0 < 10:
+            if os.path.exists(lock_path) and os.path.getsize(lock_path) > 0:
+                break
+            time.sleep(0.02)
+        else:
+            raise AssertionError("first instance never wrote its PID to the lockfile")
+
         second = subprocess.run(_bridge_args(out), cwd=SRC_DIR,
                                  stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                  timeout=30)
