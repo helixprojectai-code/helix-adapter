@@ -556,6 +556,42 @@ Once a receipt is sealed in the chain, it cannot be retracted. Decisions or hall
 
 ---
 
+## 5. Physical Layer & Research Components (v1.7.5)
+
+The adapter's governance stack (constitutional prompts, Cedar gate, receipts)
+now sits atop a documented physical/research layer:
+
+### 5.1 CORE/plop — PLOP Bridge
+Fail-closed IMU attitude-geometry bridge, production v1.0.10 on CORE:
+strapdown quaternion integration → spherical winding measure → quaternion
+correction → 200-byte receipt to a localhost gate. HMAC-keyed checkpoint
+chain, replay protection, SVD hybrid winding apex, calibrated threshold.
+→ `docs/CORE_PLOP.md`, `CORE/plop-bridge/`
+
+### 5.2 PQC-Engine
+HELIX Hybrid Topological Post-Quantum Crypto Engine: 10-crossing braid root
+of trust in SU(8), coupling NIST lattice hardness (MLWE/MSVP) with #P-hard
+topological invariants; governance as topological entanglement (C1/C2 bound
+via Gauss linking numbers). Validated (unitarity 7.37e-9, trace −1.0),
+benchmarked (BKZ/RHF, ML-KEM/ML-DSA latency, Jones complexity), DOI'd.
+→ `docs/PQC_ENGINE.md`, `PQC-Engine/`
+
+### 5.3 Spacetime
+Constitutional topological gravity suite: four validated campaigns showing
+knot density couples to the metric (5 ppm curvature, 45 ppm dilation at
+10× density) while mass alone does not. Topology exact everywhere
+(|Lk| = 0.9947 ± 6e-15). → `docs/SPACETIME.md`, `spacetime/`
+
+### 5.4 Research Layer
+Oxford battery continuum (Helix 300 Hz / 4-phase Master Reset vs standard
+Butler-Volmer; dendrite-risk proxy R → 0, Δc → 0), TRACE schema set
+(`docs/schemas/`), RFC library (`docs/rfc/`).
+
+> Artifact directories land on `build-dev` with the next main merge
+> (they live on `main` via PR #23).
+
+---
+
 *Architecture research conducted 2026-06-26 through 2026-07-10 | Stephen Hope (Custodian) | Ratified 2026-07-10 | Confidence: High*
 
 **The formation holds.** 🦆
