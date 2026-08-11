@@ -79,3 +79,28 @@ def test_checkpoint_chain_detects_truncated_journal():
     ok, reason = verify_checkpoint(out)
     assert not ok
     assert reason == "JOURNAL_MISMATCH"
+
+
+def test_checkpoint_chain_rejects_non_dict_shape():
+    """v1.0.11: valid JSON that isn't shaped like a checkpoint at all (a
+    bare list) used to raise AttributeError out of verify_checkpoint()
+    instead of returning (False, reason) -- the field-access body sat
+    outside the try/except that only covered json.load()."""
+    out = "/tmp/plop_chain_non_dict.json"
+    with open(out, "w") as f:
+        json.dump([1, 2, 3], f)
+    ok, reason = verify_checkpoint(out)
+    assert not ok
+    assert reason.startswith("MALFORMED:")
+
+
+def test_checkpoint_chain_rejects_malformed_chain_field():
+    """v1.0.11: a dict with a 'chain' field present (so it passes the
+    NO_CHAIN check) but not itself a dict used to raise AttributeError
+    on chain.get(...) instead of failing closed."""
+    out = "/tmp/plop_chain_bad_field.json"
+    with open(out, "w") as f:
+        json.dump({"chain": "not-a-dict", "last_sample": 1, "complete": False}, f)
+    ok, reason = verify_checkpoint(out)
+    assert not ok
+    assert reason.startswith("MALFORMED:")

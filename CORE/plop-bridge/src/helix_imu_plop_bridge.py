@@ -114,6 +114,7 @@ import argparse
 import os
 import hashlib
 import hmac
+import fcntl
 from collections import deque
 
 # =============================================================================
@@ -674,33 +675,45 @@ def verify_checkpoint(path, key=None, key_file=None):
     `key` directly, or `key_file`, or set PLOP_CHAIN_KEY. Without the
     correct key this correctly reports SELF_HASH_MISMATCH for anything,
     genuine or forged -- that's the fix, not a bug: a checkpoint that
-    can't prove which key signed it isn't verified."""
+    can't prove which key signed it isn't verified.
+
+    v1.0.11: the field-access/validation body below used to sit outside
+    the try/except that only covered json.load(). A file that parses as
+    valid JSON but isn't shaped like a checkpoint (a bare list, a number,
+    a dict missing 'chain') hit `data.get('chain')` or `chain.get(...)`
+    and raised AttributeError/TypeError straight out of the function --
+    a real, findable-in-15-seconds crash instead of the (False, reason)
+    contract every caller of this function relies on. Now wrapped so any
+    shape failure reports MALFORMED instead of propagating."""
     try:
         with open(path) as f:
             data = json.load(f)
     except Exception as e:
         return False, f"UNREADABLE: {e}"
-    chain = data.get('chain')
-    if not chain:
-        return False, "NO_CHAIN"
-    if _content_hash(data) != chain.get('content_hash'):
-        return False, "CONTENT_HASH_MISMATCH"
-    if key is None:
-        key = _get_chain_key(key_file)
-    self_hash = _chain_hash(
-        chain.get('prev_hash'), chain.get('index'),
-        data.get('last_sample'), data.get('complete'),
-        chain.get('content_hash'), key=key)
-    if self_hash != chain.get('self_hash'):
-        return False, "SELF_HASH_MISMATCH"
-    jp = f"{path}.chain"
-    if os.path.exists(jp):
-        lines = [ln for ln in open(jp).read().splitlines() if ln.strip()]
-        if lines:
-            last = lines[-1].split('|')
-            if len(last) < 4 or last[3] != chain.get('self_hash'):
-                return False, "JOURNAL_MISMATCH"
-    return True, "OK"
+    try:
+        chain = data.get('chain')
+        if not chain:
+            return False, "NO_CHAIN"
+        if _content_hash(data) != chain.get('content_hash'):
+            return False, "CONTENT_HASH_MISMATCH"
+        if key is None:
+            key = _get_chain_key(key_file)
+        self_hash = _chain_hash(
+            chain.get('prev_hash'), chain.get('index'),
+            data.get('last_sample'), data.get('complete'),
+            chain.get('content_hash'), key=key)
+        if self_hash != chain.get('self_hash'):
+            return False, "SELF_HASH_MISMATCH"
+        jp = f"{path}.chain"
+        if os.path.exists(jp):
+            lines = [ln for ln in open(jp).read().splitlines() if ln.strip()]
+            if lines:
+                last = lines[-1].split('|')
+                if len(last) < 4 or last[3] != chain.get('self_hash'):
+                    return False, "JOURNAL_MISMATCH"
+        return True, "OK"
+    except (AttributeError, TypeError, KeyError) as e:
+        return False, f"MALFORMED: {type(e).__name__}: {e}"
 
 # =============================================================================
 # MAIN BRIDGE
@@ -769,6 +782,32 @@ def main():
     # Fail fast: resolve the chain key before doing any real work, not
     # hours into a run at the first checkpoint write. See _get_chain_key().
     chain_key = _get_chain_key(args.chain_key_file)
+
+    # v1.0.11: instance lock -- two processes writing the same --output
+    # checkpoint concurrently interleave writes into one chain (racing
+    # os.replace() calls, non-monotonic chain.index, a journal that
+    # doesn't match either process's view of its own history). This was
+    # confirmed reachable, not hypothetical -- nothing before this
+    # stopped `python3 helix_imu_plop_bridge.py --output x.json` from
+    # being started twice. Non-blocking exclusive flock on a dedicated
+    # lockfile beside the output; refuse to start if another instance
+    # already holds it, rather than corrupt the chain and find out at
+    # verify_checkpoint() time. Held for the process lifetime (flock
+    # releases automatically when the fd closes, including on crash/
+    # SIGKILL -- no explicit unlock path needed). POSIX-only (fcntl),
+    # consistent with the rest of this bridge's systemd/Linux
+    # assumptions (SO_REUSEADDR, Restart=on-failure).
+    lock_path = f"{args.output}.lock"
+    lock_fd = open(lock_path, "w")
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        parser.error(
+            f"another instance already holds the lock on {lock_path} -- "
+            f"refusing to run two bridges against the same --output "
+            f"concurrently, see docs/CHANGELOG.md v1.0.11")
+    lock_fd.write(str(os.getpid()))
+    lock_fd.flush()
 
     dt = 1.0 / args.rate
     N = int(args.duration * 3600 / dt)
