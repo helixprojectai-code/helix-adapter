@@ -1,7 +1,29 @@
 # PLOP Bridge Changelog
 
-## v1.0.11 — 2026-08-11 (checkpoint hardening + O(1) fix, R1/R4)
+## v1.0.11 — 2026-08-11 (checkpoint hardening + O(1) fix + drift alarm, R1/R4)
 
+- **Added: long-horizon drift alarm (R1 item 3).** PLOP's winding number
+  is a *local*, one-window topology check — R0 found it stays ~0 for
+  slow monotonic gyro-bias drift even as it compounds unboundedly across
+  a run (67.3° / 39.2Bm final error, zero surgeries fired, 41.86h
+  stationary soak). New, independent detector: `--calibrate-drift`
+  disables surgery/PLOP entirely and samples `qangle(q_now,
+  q_horizon_windows_ago)` over `--drift-horizon-windows`-sized horizons
+  (default 100) with corrections off, writing `<output>.calibration.json`
+  (p50/90/95/99/max + suggested thresholds at k=3/k=5). `--drift-
+  threshold-deg` runs the alarm using that value; `--drift-consecutive`
+  (default 3) requires sustained breach before firing, through the
+  existing `fail_fault()` path. Buffer resets on any surgery (a
+  correction's step change in `q` must not read as drift) and stays
+  silent until the horizon fills after cold start.
+  **Threshold is empirical, not closed-form** — R1's first design pass
+  proposed `bound × √hours × k` (Angle Random Walk scaling), but `gb`
+  (`:293-304`) is a random walk fed straight into the integrated rate —
+  Rate Random Walk, std ∝ t^1.5, not t^0.5. Discrete quaternion
+  integration made mapping the sensor's ARW-class spec to an equivalent
+  RRW threshold analytically risky to get right (Kimi review
+  2026-08-11), so this measures what the code actually does via a
+  reference calibration run instead of what a continuous model predicts.
 - **BREAKING: checkpoint `surgeries`/`plops`/`suppressed` fields are now
   objects, not lists.** Was `"surgeries": [...]` (full history, every
   event, every checkpoint); now `"surgeries": {"count": N, "recent":
