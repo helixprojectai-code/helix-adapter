@@ -748,6 +748,32 @@ def main():
                               "rewritten in full every checkpoint, O(n) per write / O(n^2) per "
                               "run under a high event rate; full history now goes to append-only "
                               ".jsonl journals instead, see docs/CHANGELOG.md)")
+    parser.add_argument("--calibrate-drift", action="store_true",
+                         help="calibration mode (v1.0.11, R1 item 3): disables topological "
+                              "surgery/PLOP entirely and instead samples the raw, uncorrected "
+                              "attitude drift over --drift-horizon-windows-sized horizons, "
+                              "writing the empirical percentile distribution to "
+                              "<output>.calibration.json. Run this once against representative "
+                              "sensor conditions to derive --drift-threshold-deg for a later "
+                              "real run -- see docs/CHANGELOG.md for why this is empirical "
+                              "rather than a closed-form threshold (RRW vs ARW, R1 item 3).")
+    parser.add_argument("--drift-horizon-windows", type=int, default=100,
+                         help="how many window-checks define one drift-alarm horizon (default "
+                              "100; Kimi review 2026-08-11: inside the sensitive band of typical "
+                              "MEMS Allan-deviation minima without letting a real fault run "
+                              "unalarmed for too long). Shared between calibration and detection "
+                              "-- calibrate and detect with the same value.")
+    parser.add_argument("--drift-threshold-deg", type=float, default=None,
+                         help="runtime drift-alarm threshold in degrees of attitude change over "
+                              "one horizon, derived empirically via --calibrate-drift. Omit to "
+                              "disable the drift alarm entirely (default -- opt-in, no behavior "
+                              "change for existing configs). Cannot be combined with "
+                              "--calibrate-drift.")
+    parser.add_argument("--drift-consecutive", type=int, default=3,
+                         help="consecutive horizon breaches required before the drift alarm "
+                              "fires (default 3, Kimi review 2026-08-11: ~5min sustained at "
+                              "default horizon/rate -- absorbs a single noisy window, still "
+                              "catches a real runaway before it integrates to meters)")
     args = parser.parse_args()
 
     # v1.0.7: reject bad config up front instead of crashing deep in a
@@ -788,6 +814,27 @@ def main():
         parser.error(
             f"--recent-events must be >= 0 (got {args.recent_events}) -- "
             f"it bounds a deque(maxlen=...), which rejects negative values")
+    if args.drift_horizon_windows < 1:
+        parser.error(
+            f"--drift-horizon-windows must be >= 1 (got {args.drift_horizon_windows}) -- "
+            f"it bounds a deque(maxlen=...), which rejects non-positive values")
+    if args.drift_consecutive < 1:
+        parser.error(
+            f"--drift-consecutive must be >= 1 (got {args.drift_consecutive})")
+    if args.calibrate_drift and args.drift_threshold_deg is not None:
+        parser.error(
+            "--calibrate-drift and --drift-threshold-deg are mutually exclusive -- "
+            "calibration produces a threshold (from a clean reference run), it doesn't "
+            "consume one. Run --calibrate-drift first, then feed its output's percentile "
+            "into a later --drift-threshold-deg run")
+    if args.drift_threshold_deg is not None:
+        if not np.isfinite(args.drift_threshold_deg):
+            parser.error(f"--drift-threshold-deg must be finite (got {args.drift_threshold_deg})")
+        if args.drift_threshold_deg <= 0:
+            parser.error(
+                f"--drift-threshold-deg must be > 0 (got {args.drift_threshold_deg}) -- "
+                f"a threshold of 0 or below fires the alarm on the very first horizon, "
+                f"including genuinely healthy drift")
 
     # Fail fast: resolve the chain key before doing any real work, not
     # hours into a run at the first checkpoint write. See _get_chain_key().
@@ -916,6 +963,29 @@ def main():
     # was never used for anything but these two reductions.
     w_min = float('inf')
     w_max = float('-inf')
+
+    # v1.0.11 (R1 item 3): long-horizon drift alarm/calibration state.
+    # PLOP's winding number is a *local* (one-window) topology check --
+    # slow monotonic gyro-bias drift moves the sensed gravity vector a
+    # negligible amount within any single window, so it never crosses
+    # W_thresh even as it compounds unboundedly across the whole run (R0
+    # finding: 67.3deg/39.2Bm final error, W stayed ~0 the entire soak).
+    # This buffer holds one q snapshot per window-check, `drift_horizon_
+    # windows` deep; once full, comparing the newest against the oldest
+    # measures drift over a horizon much longer than one topology window,
+    # independent of W. Calibration mode (--calibrate-drift) samples this
+    # delta with corrections disabled to build an empirical threshold
+    # (Kimi review 2026-08-11: discrete quaternion integration makes a
+    # closed-form ARW->RRW threshold mapping risky -- ARW/RRW: gb is a
+    # random walk fed straight into the integrated rate, i.e. Rate Random
+    # Walk, std ~ t^1.5, not the Angle Random Walk t^0.5 a naive sqrt(t)
+    # formula assumes -- so this measures what the code actually does
+    # instead of what a continuous model says it should). Detection mode
+    # (--drift-threshold-deg) uses that empirical value directly.
+    drift_q_buffer = deque(maxlen=args.drift_horizon_windows)
+    drift_samples = []  # calibration mode only: every horizon's delta, in degrees
+    drift_breach_streak = 0  # detection mode only: consecutive over-threshold horizons
+
     # Bounded history: only the last `window` quaternions are ever used for
     # winding computation, so a ring buffer keeps memory flat regardless of
     # simulation duration (was an unbounded list — ~830MB+ at 24h/300Hz).
@@ -1044,103 +1114,144 @@ def main():
 
         # Periodic topological check
         if i % args.window == 0 and i >= args.window:
-            # APPROACH 1: Use actual quaternion history from the window
-            # deque(maxlen=window) holds exactly the last `window` quaternions
-            # once full, in oldest→newest order — same content the old
-            # `q_history[-args.window:]` list slice produced, but O(1) memory.
-            q_trajectory = np.array(list(q_history))
+            # v1.0.11: calibration mode skips topological surgery/PLOP
+            # entirely -- --calibrate-drift wants raw, uncorrected drift
+            # to sample from, not drift that's periodically getting reset
+            # by the existing detector. did_surgery stays False all run.
+            did_surgery = False
+            if not args.calibrate_drift:
+                # APPROACH 1: Use actual quaternion history from the window
+                # deque(maxlen=window) holds exactly the last `window` quaternions
+                # once full, in oldest→newest order — same content the old
+                # `q_history[-args.window:]` list slice produced, but O(1) memory.
+                q_trajectory = np.array(list(q_history))
 
-            # Compute gravity in body frame for the whole window at once --
-            # qdcm() is batched (v1.0.5), same math as the per-sample loop.
-            R_all = qdcm(q_trajectory)                      # (M,3,3)
-            g_b_window = R_all @ np.array([0, 0, 9.80665])  # (M,3)
+                # Compute gravity in body frame for the whole window at once --
+                # qdcm() is batched (v1.0.5), same math as the per-sample loop.
+                R_all = qdcm(q_trajectory)                      # (M,3,3)
+                g_b_window = R_all @ np.array([0, 0, 9.80665])  # (M,3)
 
-            q_surgery, W, did_surgery, axis = topological_surgery(q, g_b_window, args.W_thresh)
+                q_surgery, W, did_surgery, axis = topological_surgery(q, g_b_window, args.W_thresh)
 
-            # v1.0.7: second backstop -- q/om/ac were already checked finite
-            # above, so this window's inputs should be clean, but catch it
-            # here too rather than silently log a NaN into W_history (which
-            # would then poison min()/max() in the checkpoint metrics).
-            if not np.isfinite(W):
-                fail_fault("NON_FINITE_WINDING", f"W={W}", i)
+                # v1.0.7: second backstop -- q/om/ac were already checked finite
+                # above, so this window's inputs should be clean, but catch it
+                # here too rather than silently log a NaN into W_history (which
+                # would then poison min()/max() in the checkpoint metrics).
+                if not np.isfinite(W):
+                    fail_fault("NON_FINITE_WINDING", f"W={W}", i)
 
-            w_val = float(W)
-            if w_val < w_min:
-                w_min = w_val
-            if w_val > w_max:
-                w_max = w_val
+                w_val = float(W)
+                if w_val < w_min:
+                    w_min = w_val
+                if w_val > w_max:
+                    w_max = w_val
 
-            # DEBUG: Print gravity trajectory sample
-            if i == args.window:  # First topological check
-                print(f"\n[DEBUG] Sample gravity-bias trajectory (first 10 points):")
-                for k in range(min(10, len(g_b_window))):
-                    print(f"  g[{k}] = {g_b_window[k]}")
-                print(f"[DEBUG] W = {W:.6f} (threshold = {args.W_thresh})")
+                # DEBUG: Print gravity trajectory sample
+                if i == args.window:  # First topological check
+                    print(f"\n[DEBUG] Sample gravity-bias trajectory (first 10 points):")
+                    for k in range(min(10, len(g_b_window))):
+                        print(f"  g[{k}] = {g_b_window[k]}")
+                    print(f"[DEBUG] W = {W:.6f} (threshold = {args.W_thresh})")
 
-            # Steady-rotation gate: the winding integral alone can't tell
-            # "gravity is looping because of an anomaly" apart from
-            # "gravity is looping because the vehicle is intentionally,
-            # controllably rotating" -- both produce identical winding
-            # signatures (verified: sustained barrel roll crosses
-            # threshold repeatedly and correctly, but isn't a fault).
-            # This checks the angular-rate signature over the same window
-            # for the smooth/bounded/sustained profile of a commanded
-            # maneuver, and suppresses the surgery if that's what this is.
-            if did_surgery and not args.no_steady_gate:
-                omega_window = np.array(list(omega_history))
-                if is_steady_rotation(omega_window, args.steady_cv_thresh, args.steady_axis_thresh_deg):
-                    suppressed_event = {
-                        "sample": i, "time_hr": i * dt / 3600, "W": float(W),
-                        "axis": axis.tolist(), "reason": "steady_rotation"
-                    }
-                    suppressed_log.append(suppressed_event)
-                    suppressed_count += 1
-                    _append_journal("suppressed", suppressed_event)
-                    print(f"  [SUPPRESSED] t={i*dt/3600:.2f}h | W={W:.4f} | "
-                          f"steady rotation detected, not applying surgery")
-                    did_surgery = False
+                # Steady-rotation gate: the winding integral alone can't tell
+                # "gravity is looping because of an anomaly" apart from
+                # "gravity is looping because the vehicle is intentionally,
+                # controllably rotating" -- both produce identical winding
+                # signatures (verified: sustained barrel roll crosses
+                # threshold repeatedly and correctly, but isn't a fault).
+                # This checks the angular-rate signature over the same window
+                # for the smooth/bounded/sustained profile of a commanded
+                # maneuver, and suppresses the surgery if that's what this is.
+                if did_surgery and not args.no_steady_gate:
+                    omega_window = np.array(list(omega_history))
+                    if is_steady_rotation(omega_window, args.steady_cv_thresh, args.steady_axis_thresh_deg):
+                        suppressed_event = {
+                            "sample": i, "time_hr": i * dt / 3600, "W": float(W),
+                            "axis": axis.tolist(), "reason": "steady_rotation"
+                        }
+                        suppressed_log.append(suppressed_event)
+                        suppressed_count += 1
+                        _append_journal("suppressed", suppressed_event)
+                        print(f"  [SUPPRESSED] t={i*dt/3600:.2f}h | W={W:.4f} | "
+                              f"steady rotation detected, not applying surgery")
+                        did_surgery = False
 
+                if did_surgery:
+                    # === EMIT PLOP ===
+                    ts_ns = int(time.time() * 1e9)
+                    packet = craft_plop_packet(ts_ns, args.baseline_hash, int(np.sign(W)))
+
+                    # Validate self
+                    valid, reason = validate_plop_packet(packet, args.baseline_hash)
+
+                    if valid:
+                        # Emit to Ring 1
+                        if emit_sock:
+                            emit_sock.sendto(packet, (BIND_HOST, BIND_PORT))
+
+                        # Check Ring 1 receipt
+                        time.sleep(0.001)
+                        receipt = ring1.check()
+
+                        plop_event = {
+                            "sample": i,
+                            "time_hr": i * dt / 3600,
+                            "W": float(W),
+                            "Lk": int(np.sign(W)),
+                            "hash": hex(args.baseline_hash),
+                            "packet_valid": True,
+                            "ring1_receipt": receipt[1] if receipt and receipt[0] else str(receipt)
+                        }
+                        plop_log.append(plop_event)
+                        plop_count += 1
+                        _append_journal("plops", plop_event)
+
+                        # Apply surgery
+                        q = q_surgery
+                        surgery_event = {
+                            "sample": i, "time_hr": i*dt/3600, "W": float(W), "axis": axis.tolist()
+                        }
+                        surgery_log.append(surgery_event)
+                        surgery_count += 1
+                        _append_journal("surgeries", surgery_event)
+
+                        print(f"  [PLOP] t={i*dt/3600:.2f}h | W={W:.4f} | Lk={int(np.sign(W)):+d} | "
+                              f"hash=0x{args.baseline_hash:08X} | receipt={receipt}")
+
+            # v1.0.11 (R1 item 3): long-horizon drift buffer -- runs every
+            # window check, calibration or not. A surgery firing above
+            # (only possible when not calibrating) means q just took a
+            # step change from correction, not drift, so the horizon
+            # buffer is cleared rather than let that step change read as
+            # a drift breach; it starts refilling fresh from here.
             if did_surgery:
-                # === EMIT PLOP ===
-                ts_ns = int(time.time() * 1e9)
-                packet = craft_plop_packet(ts_ns, args.baseline_hash, int(np.sign(W)))
+                drift_q_buffer.clear()
+                drift_breach_streak = 0
 
-                # Validate self
-                valid, reason = validate_plop_packet(packet, args.baseline_hash)
+            if len(drift_q_buffer) == drift_q_buffer.maxlen:
+                horizon_q = drift_q_buffer[0]
+                drift_deg = float(qangle(q.reshape(1, 4), horizon_q.reshape(1, 4))[0]) * 180 / np.pi
 
-                if valid:
-                    # Emit to Ring 1
-                    if emit_sock:
-                        emit_sock.sendto(packet, (BIND_HOST, BIND_PORT))
-
-                    # Check Ring 1 receipt
-                    time.sleep(0.001)
-                    receipt = ring1.check()
-
-                    plop_event = {
-                        "sample": i,
-                        "time_hr": i * dt / 3600,
-                        "W": float(W),
-                        "Lk": int(np.sign(W)),
-                        "hash": hex(args.baseline_hash),
-                        "packet_valid": True,
-                        "ring1_receipt": receipt[1] if receipt and receipt[0] else str(receipt)
-                    }
-                    plop_log.append(plop_event)
-                    plop_count += 1
-                    _append_journal("plops", plop_event)
-
-                    # Apply surgery
-                    q = q_surgery
-                    surgery_event = {
-                        "sample": i, "time_hr": i*dt/3600, "W": float(W), "axis": axis.tolist()
-                    }
-                    surgery_log.append(surgery_event)
-                    surgery_count += 1
-                    _append_journal("surgeries", surgery_event)
-
-                    print(f"  [PLOP] t={i*dt/3600:.2f}h | W={W:.4f} | Lk={int(np.sign(W)):+d} | "
-                          f"hash=0x{args.baseline_hash:08X} | receipt={receipt}")
+                if args.calibrate_drift:
+                    drift_samples.append(drift_deg)
+                elif args.drift_threshold_deg is not None:
+                    if drift_deg > args.drift_threshold_deg:
+                        drift_breach_streak += 1
+                    else:
+                        drift_breach_streak = 0
+                    if drift_breach_streak >= args.drift_consecutive:
+                        fail_fault(
+                            "SUSTAINED_DRIFT_BEYOND_SPEC",
+                            f"drift={drift_deg:.4f}deg over {args.drift_horizon_windows} "
+                            f"windows (threshold={args.drift_threshold_deg}deg), "
+                            f"{drift_breach_streak} consecutive breaches", i)
+            # Armed-but-silent cold start (v1.0.11, Kimi review 2026-08-11):
+            # the buffer only starts producing deltas once full -- a fresh
+            # process (or one resumed from a checkpoint, which never
+            # reconstructs pre-crash history) has an empty buffer and
+            # stays silent for exactly drift_horizon_windows checks, never
+            # alarming on partial history.
+            drift_q_buffer.append(q.copy())
 
             # Checkpoint after every window (not just surgeries), so a crash
             # mid-run still leaves the last few minutes of forensic data.
@@ -1167,6 +1278,45 @@ def main():
 
     if w_min != float('inf'):
         print(f"W range: [{w_min:.4f}, {w_max:.4f}]")
+
+    # v1.0.11 (R1 item 3): calibration output. Empirical percentiles of
+    # the raw, uncorrected drift-per-horizon distribution -- feed
+    # p95/p99 x k into a later --drift-threshold-deg run. Written even on
+    # too-short runs (0 samples -> nulls + a loud warning) rather than
+    # silently producing no file, since a short calibration run is an
+    # easy mistake to make and should fail visibly, not quietly.
+    if args.calibrate_drift:
+        cal_path = f"{args.output}.calibration.json"
+        if drift_samples:
+            arr = np.array(drift_samples)
+            calibration = {
+                "drift_horizon_windows": args.drift_horizon_windows,
+                "n_samples": len(drift_samples),
+                "p50_deg": float(np.percentile(arr, 50)),
+                "p90_deg": float(np.percentile(arr, 90)),
+                "p95_deg": float(np.percentile(arr, 95)),
+                "p99_deg": float(np.percentile(arr, 99)),
+                "max_deg": float(arr.max()),
+                "suggested_threshold_deg_k3": float(np.percentile(arr, 99) * 3),
+                "suggested_threshold_deg_k5": float(np.percentile(arr, 99) * 5),
+            }
+            print(f"\n[CALIBRATION] {len(drift_samples)} horizon samples | "
+                  f"p95={calibration['p95_deg']:.4f}deg p99={calibration['p99_deg']:.4f}deg | "
+                  f"suggested --drift-threshold-deg (k=3): {calibration['suggested_threshold_deg_k3']:.4f}")
+        else:
+            calibration = {
+                "drift_horizon_windows": args.drift_horizon_windows,
+                "n_samples": 0,
+                "warning": (
+                    f"0 horizon samples collected -- --duration too short to fill even "
+                    f"one {args.drift_horizon_windows}-window horizon. Increase --duration "
+                    f"or reduce --drift-horizon-windows and re-run."
+                ),
+            }
+            print(f"\n[CALIBRATION] WARNING: {calibration['warning']}", file=sys.stderr)
+        with open(cal_path, "w") as f:
+            json.dump(calibration, f, indent=2)
+        print(f"Calibration written to {cal_path}")
 
     # Final checkpoint, marked complete
     write_checkpoint(N - 1, complete=True)
